@@ -1,0 +1,19 @@
+{
+  "name": "tanky",
+  "version": "1.0.0",
+  "description": "3D Tank Battle - Distributed Node LAN Game",
+  "main": "game-server.js",
+  "scripts": {
+    "host": "node game-server.js",
+    "client": "node client-node.js",
+    "test": "node tbn/conformance-test.js",
+    "start": "node game-server.js"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.1"
+  }
+}
