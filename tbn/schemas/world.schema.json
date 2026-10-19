@@ -33,7 +33,7 @@
     },
     "terrain": {
       "type": "object",
-      "description": "Configurable row-major DTED posts in world X/Z, with Y elevation. Index = row * columns + column; columns advance +X, rows advance +Z. Spacing is in meters; integer elevation samples are in 0.1 m units. Half-open sampling excludes the far world boundary: columns = ceil(width / spacing.x), rows = ceil(depth / spacing.z). Validate those relationships and depthMap.length = rows * columns separately from JSON Schema. Collision/render topology: each cell uses triangles (a,c,b), (b,c,d) with a=(col,row), b=(col+1,row), c=(col,row+1), d=(col+1,row+1). Duplicate last post heights to the far width/depth boundary; omit triangles touching noData posts. Terrain is fixed during gameplay; an explicit admin flatten replaces its frozen snapshot and republishes map_data. Clients must rebuild terrain on replacement map_data.",
+      "description": "Configurable row-major DTED posts in world X/Z, with Y elevation. Index = row * columns + column; columns advance +X, rows advance +Z. Spacing is in meters; integer elevation samples are in 0.1 m units. Half-open sampling excludes the far world boundary: columns = ceil(width / spacing.x), rows = ceil(depth / spacing.z). Validate those relationships and depthMap.length = rows * columns separately from JSON Schema. Collision/render topology: each cell uses triangles (a,c,b), (b,c,d) with a=(col,row), b=(col+1,row), c=(col,row+1), d=(col+1,row+1). Duplicate last post heights to the far width/depth boundary; omit triangles touching noData posts. Terrain is fixed during gameplay; an explicit admin flatten or preset change replaces its frozen snapshot and republishes map_data. Clients must rebuild terrain on replacement map_data.",
       "required": [
         "type",
         "width",
@@ -120,6 +120,48 @@
           "items": {
             "type": "integer"
           }
+        },
+        "preset": {
+          "type": "string",
+          "description": "Optional server preset identifier. Render depthMap as authoritative; never regenerate from this label.",
+          "oneOf": [
+            {
+              "const": "valley",
+              "title": "Valley",
+              "description": "A broad, low east-west corridor between raised northern and southern sides."
+            },
+            {
+              "const": "plateau",
+              "title": "Plateau",
+              "description": "A wide central flat summit with smooth slopes down to the surrounding plain."
+            },
+            {
+              "const": "mountain-range",
+              "title": "Mountain range",
+              "description": "Three parallel ridges with alternating peaks and passes."
+            },
+            {
+              "const": "flat",
+              "title": "Flat",
+              "description": "A level plain at world Y=0."
+            },
+            {
+              "const": "corner-hills",
+              "title": "Hills in four corners",
+              "description": "Four rounded hills near the corners with an open central plain."
+            },
+            {
+              "const": "city-blocks",
+              "title": "City blocks",
+              "description": "Regular streets between raised, flat-roofed heightfield blocks. Block edges slope over one sample interval; no separate building meshes or hidden object colliders."
+            }
+          ]
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "Generation seed for the named preset. Clients still render transmitted samples."
         }
       }
     }

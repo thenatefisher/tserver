@@ -222,3 +222,16 @@ test('sustained forward-only driving remains grounded across flat triangle edges
         assert.ok(m.getState().actors[0].position.x > 200, 'must cross the default grid chunk boundary at X=140');
     }
 });
+
+test('grounded vehicles stop promptly after throttle release without reversing or damping airborne travel', t => {
+    for (const controller of ['ground','mecha']) {
+        const m=model(t,[actor({velocity:{x:25,y:0,z:0},physicsProfile:{controller,maxSpeed:100}})]);
+        let maxReverse=0;
+        for (let i=0;i<300;i++) {
+            const moved=m.step({a:frame({sequence:i})},1/60).actors[0]; maxReverse=Math.min(maxReverse,moved.centerVelocity.x);
+        }
+        assert.ok(Math.abs(m.getState().actors[0].centerVelocity.x)<0.02); assert.ok(maxReverse>-0.005);
+    }
+    const airborne=model(t,[actor({position:{x:0,y:20,z:0},velocity:{x:10,y:0,z:0}})],{gravity:0,terrain:terrain()});
+    assert.ok(Math.abs(run(airborne,2).centerVelocity.x-10)<0.001);
+});

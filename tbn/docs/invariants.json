@@ -115,7 +115,8 @@
       "sampleCount": 16000000
     },
     "collisionTopology": "triangles (a,c,b) and (b,c,d); last row/column extended to far boundary",
-    "replacementPolicy": "fixedDuringGameplay; explicitAdminFlattenReplacesSnapshotAndColliders"
+    "replacementPolicy": "fixedDuringGameplay; adminFlattenOrPresetReplacesSnapshotAndColliders",
+    "presetContract": "tbn/schemas/world.schema.json#/properties/terrain/properties/preset"
   },
   "input": {
     "actionSchema": "tbn/schemas/actions.schema.json",
@@ -223,6 +224,7 @@
     "buoyancyDamping": 6,
     "aircraftLiftSpeed": 10,
     "aircraftDrag": 0.08,
-    "controllerSchema": "tbn/schemas/actor.schema.json#/properties/physicsProfile/properties/controller"
+    "controllerSchema": "tbn/schemas/actor.schema.json#/properties/physicsProfile/properties/controller",
+    "coastDeceleration": 6
   }
 }

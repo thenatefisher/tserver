@@ -48,10 +48,12 @@ function applyController(record, frame, support, dt, environment) {
         const gravity = environment.gravity ?? invariants.input.standardGravityMetersPerSecondSquared;
         accelerate(rb, scale(tangent({ x: 0, y: -gravity, z: 0 }, support), -1));
         accelerate(rb, scale(forward, frame.move.x * p.forwardAcceleration));
-        if (mode === 'ground' || frame.move.y === 0) resist(rb, left, Math.abs(dot(rb.linvel(), left)) * p.lateralGrip, dt);
+        // Combine grip/coasting/braking before clamping, so independent resistors cannot overshoot zero.
+        const lateralResistance = (mode === 'ground' || frame.move.y === 0 ? Math.abs(dot(rb.linvel(), left)) * p.lateralGrip : 0) +
+            (mode === 'mecha' ? (frame.move.y === 0 ? p.coastDeceleration : 0) + frame.brake * p.brakeDeceleration : 0);
+        resist(rb, left, lateralResistance, dt);
         if (mode === 'mecha') accelerate(rb, scale(left, frame.move.y * p.lateralAcceleration));
-        resist(rb, forward, p.rollingDeceleration + frame.brake * p.brakeDeceleration, dt);
-        if (mode === 'mecha') resist(rb, left, frame.brake * p.brakeDeceleration, dt);
+        resist(rb, forward, p.rollingDeceleration + (frame.move.x === 0 ? p.coastDeceleration : 0) + frame.brake * p.brakeDeceleration, dt);
         stabilize(rb, shape, support, p);
         // Ground yaw is deliberate steering; pitch/roll commands cannot fight terrain alignment.
         angularControl(rb, shape, { x: 0, y: 0, z: frame.rotate.z }, p);

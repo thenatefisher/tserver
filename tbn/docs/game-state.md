@@ -15,3 +15,5 @@ World data follows [`tbn/schemas/world.schema.json`](tbn/schemas/world.schema.js
 Protocol v2 actors additionally require `rotationalRates` (body-local angular velocity in rad/s), `grounded` (terrain support), and `lastInputSequence` (latest frame consumed, initially -1). Controllers and maximum speed are in registration descriptors under `physicsProfile`. Use contact transitions for landing effects; a bounce is airborne. Render slope pitch/roll and landing recovery from snapshots; never force a level pose or clamp Y locally. See [physics-controls.md](physics-controls.md) for quaternion interpolation and basis conversion.
 
 An admin flatten publishes replacement `map_data` and repositioned actor state without reconnecting clients. On `terrain_flattened`, discard old interpolation history to prevent interpolating through the former hills. Keep input sequences increasing.
+
+Terrain preset selection behaves like flattening: replace world meshes on `map_data`, clear interpolation on `terrain_changed`, preserve sequence counters. `terrain.preset`/`seed` are optional metadata and must not replace rendering the received depth map.

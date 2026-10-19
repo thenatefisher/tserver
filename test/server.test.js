@@ -222,3 +222,21 @@ test('admin diagnostic buttons clear targets and disable object collisions only 
     const settings = event(admin, 'collision_settings'); admin.emit('join_session', 'second'); assert.equal((await settings).terrainOnlyCollisions, false);
     const back = event(admin, 'collision_settings'); admin.emit('join_session', 'default'); assert.equal((await back).terrainOnlyCollisions, true);
 });
+
+test('admins choose a session terrain preset and clients receive the matching map and reset notice', {timeout:10000}, async t => {
+    const server=createGameServer({port:0,host:'127.0.0.1',discovery:false,logger,sessions:[{id:'default',terrainPreset:'flat'},{id:'second',terrainPreset:'valley'}]});
+    t.after(()=>server.close()); await server.start();
+    const url=`http://127.0.0.1:${server.http.address().port}`;
+    const html=await(await fetch(url+'/admin')).text(); assert.match(html,/id="terrain-preset"/); assert.match(html,/id="apply-terrain"/);
+    const player=await connect(t,url), admin=await connect(t,url,{role:'admin'});
+    const catalog=event(admin,'terrain_presets'); admin.emit('request_terrain_presets'); const options=await catalog;
+    assert.equal(options.presets.length,6); assert.equal(options.selected,'flat');
+    const denied=event(player,'request_rejected'); player.emit('admin_set_terrain_preset','mountain-range'); assert.match((await denied).reason,/Admin/);
+    const before=server.sessions.get().data.resources.get('terrain').version;
+    const invalid=event(admin,'request_rejected'); admin.emit('admin_set_terrain_preset','made-up'); await invalid;
+    assert.equal(server.sessions.get().data.resources.get('terrain').version,before);
+    const updated=event(player,'map_data',map=>map.terrain.preset==='city-blocks'); const changed=event(player,'terrain_changed');
+    admin.emit('admin_set_terrain_preset','city-blocks'); const map=await updated; assert.ok(map.terrain.depthMap.some(h=>h>0));
+    assert.equal((await changed).version,before+1); assert.equal(server.sessions.get('second').data.map.terrain.preset,'valley');
+    const summaries=await(await fetch(url+'/sessions')).json(); assert.equal(summaries.find(s=>s.id==='default').terrainPreset,'city-blocks');
+});

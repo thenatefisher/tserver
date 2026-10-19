@@ -59,7 +59,7 @@ Rapier handles gravity, rigid-body collisions, rotational inertia, normal impuls
 
 All actor GLBs are validated closed solids. Uniform session density times original enclosed volume gives mass; center of mass is the visual-box centroid. Convex actors use their convex hull; concave actors use bounded convex decomposition (up to 16 parts). Fine recesses may be approximated. Box inertia is an approximation. Animated/deforming visuals do not alter collision geometry. The fixed 2 m hitbox is a gameplay metadata convention, not the rigid-body collider.
 
-Terrain collision and render topology must agree: see `dted-terrain.md`. Terrain remains unchanged during ordinary gameplay. The admin can explicitly flatten the selected session; clients must replace terrain meshes/collision caches on each new `map_data` event.
+Terrain collision and render topology must agree: see `dted-terrain.md`. Terrain remains unchanged during ordinary gameplay. The admin can explicitly flatten the selected session or choose a terrain preset; clients must replace terrain meshes/collision caches on each new `map_data` event.
 
 ## Render authoritative state intuitively
 
@@ -91,3 +91,11 @@ The admin dashboard offers **Remove targets** and **Disable object collisions** 
 Disabling object collisions enables a persistent **terrain-only collision** mode. Rapier collision groups keep actor-to-terrain contact but disable every non-terrain object pair, including actor-to-actor and actor-to-obstacle interactions. Bodies, GLBs, mass, inertia, movement, gravity and world-bound constraints remain. This mode applies to existing and newly registered actors and survives terrain flattening. It resets with a new session/process, rather than automatically re-enabling on reconnect.
 
 Admin request `admin_disable_object_collisions` broadcasts `collision_settings` with `{sessionId,terrainOnlyCollisions:true,affectedColliders}`. Selection/join also supplies `collision_settings` (the count is optional), so reconnecting dashboards and clients can display the current mode. Predicted client physics should apply the same terrain-only filter; do not delete actor meshes or disable terrain contact. The bundled relay forwards and caches these settings for newly opened views. Target request `admin_remove_targets` and collision-mode changes require the admin role; ordinary players receive `request_rejected`.
+
+## Standard terrain presets
+
+Valley, plateau, mountain range, flat, hills in four corners and city blocks can be selected independently for each session, at creation or through the admin dashboard. Preset changes use the same versioned terrain/collider replacement path as flattening; clients must handle `terrain_changed` as well as `terrain_flattened`. See [the terrain preset guide](terrain-presets.md) for IDs, geometry, configuration and client behavior.
+
+## Grounded coasting friction
+
+Ground/mecha controllers retain low powered rolling resistance (0.6 m/s²), but neutral throttle adds 6 m/s² of coasting resistance while supported. Default forward coasting deceleration is therefore approximately 6.6 m/s²: from 25 m/s a level vehicle stops in about 3.8 seconds instead of roughly 42 seconds. Braking adds stronger resistance. Forces are capped so resistance cannot reverse motion through zero. Mecha neutral strafe uses the same bounded resistance. Airborne travel is unchanged; this is directional controller friction, rather than isotropic Rapier material friction that would also impede powered forward motion. Values are server-owned in `invariants.json.physics` (`rollingDeceleration`, `coastDeceleration`); no input/schema change is required.

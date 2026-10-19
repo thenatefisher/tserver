@@ -8,6 +8,7 @@
 const { RAPIER, initializePhysics, isInitialized } = require('./runtime');
 const { normalizeAction } = require('./actions');
 const { createTerrainColliders, terrainSupport } = require('./terrain');
+const { terrainContact } = require('./contacts');
 const { terrainOnlyCollisionPolicy } = require('./collision-policy');
 const { applyController } = require('./controllers');
 const { worldQuaternion, bodyOrientation, rotateVector } = require('./rotation');
@@ -144,8 +145,8 @@ class PhysicsModel {
         this.terrainOnlyCollisions = true;
         return terrainOnlyCollisionPolicy(this.world, this.terrainHandles);
     }
-    /** Swap static terrain, settle actor roots onto a flat plane and clear motion/input without resetting sequences. */
-    flattenTerrain(terrain, sequences = {}) {
+    /** Swap static terrain, safely place actors above its surface and clear motion/input without resetting sequences. */
+    replaceTerrain(terrain, sequences = {}) {
         if (!this.world || this.closed) throw new Error('Physics is not ready');
         const handles = createTerrainColliders(this.world, terrain, this.environment);
         // Build replacements before removing old colliders; all operations run within one server turn.
@@ -157,6 +158,8 @@ class PhysicsModel {
             const orientation = { x: 0, y: 0, z: Math.atan2(-forward.z, forward.x), order: 'XYZ' };
             rb.setRotation(worldQuaternion(orientation), true);
             const position = { ...rb.translation() }; position.y = terrain.heightAt(position.x, position.z);
+            const contact = terrainContact({ ...actor, position, orientation }, { terrain });
+            if (Number.isFinite(contact.height)) position.y = Math.max(position.y, contact.height);
             rb.setTranslation(position, true); rb.setLinvel({ x: 0, y: 0, z: 0 }, true); rb.setAngvel({ x: 0, y: 0, z: 0 }, true);
             rb.resetForces(true); rb.resetTorques(true);
             record.sequence = Math.max(record.sequence, sequences[actor.id] ?? -1);
@@ -166,6 +169,8 @@ class PhysicsModel {
         }
         return this.getState();
     }
+    /** Preserve the flat-terrain entry point while sharing the generalized replacement path. */
+    flattenTerrain(terrain, sequences = {}) { return this.replaceTerrain(terrain, sequences); }
     /** Return copies, keeping WASM objects and control receipt clocks private. */
     getState() { return cloneState(this.state); }
     /** Free all session-owned WASM allocations; safe before ready and on repeated calls. */

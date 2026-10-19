@@ -11,14 +11,16 @@ const { PhysicsModel, normalizeAction } = require('../physics');
 const { TerrainModel } = require('../terrain/model');
 const { ActorManager } = require('../actors/manager');
 const { validate, invariants } = require('../contracts');
-const { createMap, validateMap, resetTargets } = require('../terrain');
+const { createMap, createDtedTerrain, validateMap, resetTargets } = require('../terrain');
 
 class GameSession extends EventEmitter {
     /** Generate or clone a session terrain, build its physics/data/actor owners and leave timers stopped. */
-    constructor({ id, name = id, map = createMap(), tickRate = invariants.network.simulationFrequencyHz, environment = {}, physicsFactory = options => new PhysicsModel(undefined, undefined, options) }) {
+    constructor({ id, name = id, map, terrainPreset, terrainSeed, tickRate = invariants.network.simulationFrequencyHz, environment = {}, physicsFactory = options => new PhysicsModel(undefined, undefined, options) }) {
         super();
         if (!Number.isFinite(tickRate) || tickRate <= 0) throw new Error('Invalid tick rate');
         this.id = id; this.name = name; this.tickRate = tickRate; this.startedAt = Date.now();
+        if (map && terrainPreset !== undefined) throw new Error('Choose either a custom map or terrainPreset');
+        map ||= createMap({ preset: terrainPreset, seed: terrainSeed });
         validateMap(map);
         Object.defineProperty(this, 'terrain', { value: new TerrainModel(map.terrain), enumerable: true, configurable: true });
         this.data = new SessionData(id, { ...structuredClone(map), terrain: this.terrain.grid });
@@ -31,7 +33,7 @@ class GameSession extends EventEmitter {
         this.timers = [];
     }
     /** Return public identity and connection/actor counts for discovery. */
-    description() { return { id: this.id, name: this.name, actorCount: this.data.actors.size, clientCount: [...this.data.clients.values()].filter(c => !c.connection.admin).length, tickRate: this.tickRate }; }
+    description() { return { id: this.id, name: this.name, actorCount: this.data.actors.size, clientCount: [...this.data.clients.values()].filter(c => !c.connection.admin).length, tickRate: this.tickRate, terrainPreset: this.data.map.terrain.preset || null }; }
     /** Validate/publish a public state resource and drain queued transient hit events. */
     snapshot() {
         const state = this.physics.getState();
@@ -73,16 +75,13 @@ class GameSession extends EventEmitter {
         const affectedColliders = this.physics.disableObjectCollisions();
         return { sessionId: this.id, terrainOnlyCollisions: true, affectedColliders };
     }
-    /** Flatten this session to world Y=0, republish terrain/state and settle actors without reconnecting clients. */
-    flattenTerrain() {
-        const map = structuredClone(this.data.map);
-        map.terrain.depthMap.fill(0);
-        delete map.terrain.noDataValue; // Flattening fills former holes with valid zero-elevation terrain.
-        for (const target of map.targets || []) target.y = 2;
+    /** Validate and publish a prepared terrain replacement, preserving actor identities, sequences and target visibility. */
+    replaceTerrainMap(map) {
         validateMap(map);
         const terrain = new TerrainModel(map.terrain);
+        for (const target of map.targets || []) target.y = terrain.heightAt(target.x, target.z) + 2;
         const sequences = Object.fromEntries([...this.data.actors].map(([id, actor]) => [id, actor.action.sequence]));
-        const state = this.physics.flattenTerrain(terrain, sequences);
+        const state = this.physics.replaceTerrain(terrain, sequences);
         Object.defineProperty(this, 'terrain', { value: terrain });
         this.actors.terrain = terrain;
         map.terrain = terrain.grid;
@@ -92,8 +91,17 @@ class GameSession extends EventEmitter {
             Object.assign(actor, moved, { action: normalizeAction({ sequence: sequences[moved.id] }) });
         }
         this.snapshot(); this.emit('data_changed');
-        return { sessionId: this.id, elevation: 0, version };
+        return { sessionId: this.id, preset: terrain.grid.preset || null, version };
     }
+    /** Apply a standard preset using this session's existing resolution and seed; other sessions are untouched. */
+    setTerrainPreset(preset) {
+        if (typeof preset !== 'string') throw new Error('Terrain preset ID must be a string');
+        const map = structuredClone(this.data.map);
+        map.terrain = createDtedTerrain({ preset, spacing: map.terrain.spacing, seed: map.terrain.seed ?? 0 });
+        return this.replaceTerrainMap(map);
+    }
+    /** Flatten this session to Y=0 through the standard preset path, preserving the original admin response. */
+    flattenTerrain() { return { ...this.setTerrainPreset('flat'), elevation: 0 }; }
     /** Validate and copy a hit into the pending transient event queue. */
     queueHit(event) { validate('state', { actors: [], projectiles: [], hitEvents: [event] }); this.hitEvents.push(structuredClone(event)); }
     /** Build session/client telemetry without mutating simulation state. */

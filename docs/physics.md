@@ -38,7 +38,7 @@ Hover mode has all-axis thrust, upright stabilization and terrain-relative COM h
 
 ## Terrain
 
-Every new session generates a random-seeded terrain unless a map/seed is supplied. Each DTED snapshot is deeply frozen; only the explicit admin flatten operation replaces it. Static triangle colliders are generated in 64-cell chunks. They use triangles (a,c,b), (b,c,d), with the last sample heights extended to the far boundary. Triangles touching missing samples are omitted, leaving holes. TerrainModel height queries use that same triangle diagonal; the standalone terrain module's historical bilinear helper is retained only for nonphysical convenience/target generation. Spawn placement uses TerrainModel, not that bilinear helper.
+Every new session generates a random-seeded terrain unless a map/seed is supplied. Each DTED snapshot is deeply frozen; explicit admin flatten or preset selection can replace it. Static triangle colliders are generated in 64-cell chunks. They use triangles (a,c,b), (b,c,d), with the last sample heights extended to the far boundary. Triangles touching missing samples are omitted, leaving holes. TerrainModel height queries use that same triangle diagonal; the standalone terrain module's historical bilinear helper is retained only for nonphysical convenience/target generation. Spawn placement uses TerrainModel, not that bilinear helper.
 
 Practice target resets version the world wrapper but retain identical terrain samples and collider instances. Actor motion, collision geometry and resource ownership are independent across sessions.
 
@@ -71,3 +71,11 @@ Admin request `admin_disable_object_collisions` broadcasts `collision_settings` 
 ## Flat-terrain triangle edges
 
 Terrain trimeshes enable Rapier `TriMeshFlags.FIX_INTERNAL_EDGES`. Adjacent coplanar triangles must not behave like physical ridges. Without this flag, sustained forward-only driving reproduced spurious vertical impulses and flips even with all object collisions disabled. Regression coverage drives across tile diagonals and terrain chunk boundaries for ten seconds, using both normal and terrain-only collision policies and both fine and coarse grids. This correction preserves real slopes, jumping, impacts and restitution; it does not lock attitude or remove terrain contact.
+
+## Standard terrain presets
+
+Valley, plateau, mountain range, flat, hills in four corners and city blocks can be selected independently for each session, at creation or through the admin dashboard. Preset changes use the same versioned terrain/collider replacement path as flattening; clients must handle `terrain_changed` as well as `terrain_flattened`. See [the terrain preset guide](../tbn/docs/terrain-presets.md) for IDs, geometry, configuration and client behavior.
+
+## Grounded coasting friction
+
+Ground/mecha controllers retain low powered rolling resistance (0.6 m/s²), but neutral throttle adds 6 m/s² of coasting resistance while supported. Default forward coasting deceleration is therefore approximately 6.6 m/s²: from 25 m/s a level vehicle stops in about 3.8 seconds instead of roughly 42 seconds. Braking adds stronger resistance. Forces are capped so resistance cannot reverse motion through zero. Mecha neutral strafe uses the same bounded resistance. Airborne travel is unchanged; this is directional controller friction, rather than isotropic Rapier material friction that would also impede powered forward motion. Values are server-owned in `invariants.json.physics` (`rollingDeceleration`, `coastDeceleration`); no input/schema change is required.

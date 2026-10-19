@@ -10,7 +10,8 @@ const $ = id => document.getElementById(id);
 const socket = io({ auth: { role: 'admin', sync: true, adminToken: sessionStorage.getItem('tbnAdminToken') || '' } });
 let clients = [], manifest = {}, selectedId = null, map = null, state = { actors: [] };
 let viewerPromise, model, scene, camera, renderer, controls, initialCamera;
-let meshVersion = 0, terrainOnlyCollisions = false;
+let meshVersion = 0, terrainOnlyCollisions = false, terrainPresets = [];
+const terrainPreview = document.createElement('canvas'); terrainPreview.width = terrainPreview.height = 256;
 /** Format elapsed seconds for display without changing the metric value. */
 const duration = seconds => {
     const s = Math.max(0, Math.floor(seconds));
@@ -107,6 +108,7 @@ socket.on('session_joined', session => {
     $('flatten-terrain').disabled = false; $('flatten-terrain').textContent = 'Flatten terrain';
     $('remove-targets').disabled = false; $('remove-targets').textContent = 'Remove targets';
     terrainOnlyCollisions = false; $('disable-object-collisions').disabled = false; $('disable-object-collisions').textContent = 'Disable object collisions';
+    map = null; $('terrain-preset').disabled = true; $('apply-terrain').disabled = true;
     clients = []; manifest = {}; selectedId = null; state = { actors: [] };
     renderClients(); clearMesh('Choose View beside a registered mesh.');
     $('selected').textContent = `Session: ${session.name}`;
@@ -118,6 +120,7 @@ socket.on('connect', () => {
     log('Dashboard connected'); socket.emit('request_sessions');
 });
 socket.on('disconnect', reason => {
+    $('apply-terrain').disabled = true; $('terrain-preset').disabled = true;
     $('flatten-terrain').disabled = true; $('remove-targets').disabled = true; $('disable-object-collisions').disabled = true;
     $('status').textContent = 'Disconnected · reconnecting'; $('status').style.color = '#fbbf24';
     log(`Disconnected: ${reason}`);
@@ -148,9 +151,38 @@ socket.on('server_metrics', metrics => {
     $('rate').textContent = `${metrics.tickRate} Hz`;
     renderClients();
 });
-socket.on('map_data', data => { map = data; });
+socket.on('map_data', data => {
+    map = data; drawTerrainPreview();
+    $('terrain-preset').value = data.terrain.preset || ''; updateTerrainDescription();
+});
 socket.on('state', data => { state = data; });
 $('reset-targets').addEventListener('click', () => { socket.emit('admin_reset_targets'); log('Practice targets reset'); });
+
+/** Update the explanation for the selected server-defined terrain option; no map changes occur here. */
+function updateTerrainDescription() {
+    $('terrain-description').textContent = terrainPresets.find(p => p.id === $('terrain-preset').value)?.description || 'Current custom/procedural terrain';
+}
+socket.on('terrain_presets', catalog => {
+    terrainPresets = catalog.presets;
+    const custom = document.createElement('option'); custom.value = ''; custom.textContent = 'Custom / procedural'; custom.disabled = true;
+    $('terrain-preset').replaceChildren(custom, ...terrainPresets.map(preset => {
+        const option = document.createElement('option'); option.value = preset.id; option.textContent = preset.name; return option;
+    }));
+    $('terrain-preset').value = catalog.selected || ''; $('terrain-preset').disabled = false;
+    $('apply-terrain').disabled = !$('terrain-preset').value; updateTerrainDescription();
+});
+$('terrain-preset').addEventListener('change', () => { updateTerrainDescription(); $('apply-terrain').disabled = false; });
+$('terrain-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if (!$('terrain-preset').value) return;
+    $('apply-terrain').disabled = true; $('terrain-preset').disabled = true;
+    socket.emit('admin_set_terrain_preset', $('terrain-preset').value);
+});
+socket.on('terrain_changed', result => {
+    state = { actors: [] }; // Avoid displaying interpolated positions across the terrain replacement.
+    $('apply-terrain').disabled = false; $('terrain-preset').disabled = false;
+    log(`Applied ${terrainPresets.find(p => p.id === result.preset)?.name || result.preset} terrain (world version ${result.version})`);
+});
 
 $('remove-targets').addEventListener('click', () => {
     $('remove-targets').disabled = true; $('remove-targets').textContent = 'Removing…';
@@ -176,10 +208,14 @@ $('flatten-terrain').addEventListener('click', () => {
 });
 socket.on('terrain_flattened', result => {
     $('flatten-terrain').disabled = false; $('flatten-terrain').textContent = 'Flatten terrain';
+    $('apply-terrain').disabled = false;
     log(`Terrain flattened to Y=${result.elevation} m; actors settled (world version ${result.version})`);
 });
 socket.on('request_rejected', error => {
     log(error.reason);
+    if (error.event === 'admin_set_terrain_preset') {
+        $('terrain-preset').disabled = !socket.connected; $('apply-terrain').disabled = !socket.connected || !$('terrain-preset').value;
+    }
     if (error.event === 'admin_disable_object_collisions') {
         $('disable-object-collisions').disabled = terrainOnlyCollisions || !socket.connected;
         $('disable-object-collisions').textContent = terrainOnlyCollisions ? 'Object collisions disabled' : 'Disable object collisions';
@@ -256,9 +292,26 @@ function resetCamera() {
 }
 $('reset-view').addEventListener('click', resetCamera);
 const ctx = $('radar').getContext('2d');
+/** Cache a small elevation raster from received samples so terrain shape is visible without per-frame grid traversal. */
+function drawTerrainPreview() {
+    const t = map?.terrain; if (!t) return;
+    const preview = terrainPreview.getContext('2d'), image = preview.createImageData(256, 256);
+    let min = Infinity, max = -Infinity;
+    for (const value of t.depthMap) if (value !== t.noDataValue) { min = Math.min(min, value); max = Math.max(max, value); }
+    for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+        const row = Math.min(t.rows - 1, Math.floor((255 - y) / 256 * t.rows));
+        const col = Math.min(t.columns - 1, Math.floor(x / 256 * t.columns));
+        const value = t.depthMap[row * t.columns + col], valid = value !== t.noDataValue;
+        const h = valid ? (value - min) / Math.max(1, max - min) : 0, i = (y * 256 + x) * 4;
+        image.data[i] = valid ? 20 + h * 110 : 5; image.data[i + 1] = valid ? 45 + h * 105 : 10;
+        image.data[i + 2] = valid ? 42 + h * 70 : 18; image.data[i + 3] = 255;
+    }
+    preview.putImageData(image, 0, 0);
+}
 /** Draw current world actors/targets and schedule the next browser animation frame. */
 function drawRadar() {
     ctx.clearRect(0, 0, 500, 500);
+    if (map) ctx.drawImage(terrainPreview, 0, 0, 500, 500);
     ctx.strokeStyle = '#25344b';
     for (let i = 0; i <= 500; i += 50) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 500); ctx.moveTo(0, i); ctx.lineTo(500, i); ctx.stroke(); }
     for (const target of map?.targets || []) { ctx.fillStyle = '#fb7185'; ctx.fillRect((target.x - map.terrain.origin.x) / map.terrain.width * 500 - 3, 500 - (target.z - map.terrain.origin.z) / map.terrain.depth * 500 - 3, 6, 6); }

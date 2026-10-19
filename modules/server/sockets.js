@@ -5,7 +5,7 @@
  * Side effects: Installs/removes handlers, changes room membership and mutates session state through managers.
  * Coupling: ActorManager handles actors; DataDistribution handles versioned delivery; sessions own physics.
  */
-const { invariants, protocolVersion } = require('../contracts');
+const { invariants, protocolVersion, terrainPresets } = require('../contracts');
 const { DataDistribution } = require('../sessions/distribution');
 
 class ClientSockets {
@@ -80,6 +80,7 @@ class ClientSockets {
         session.snapshot();
         socket.emit(client.admin || client.registration ? 'session_joined' : 'session_selected', { sessionId: session.id, name: session.name });
         socket.emit('protocol_info', { protocolVersion, inputTimeoutSeconds: invariants.input.inputTimeoutSeconds, physics: { ...invariants.physics, ...session.physics.environment, terrain: undefined, groundHeight: undefined, bounds: undefined } });
+        socket.emit('terrain_presets', { sessionId: session.id, presets: terrainPresets, selected: session.data.map.terrain.preset || null });
         socket.emit('collision_settings', { sessionId: session.id, terrainOnlyCollisions: session.physics.terrainOnlyCollisions });
         socket.emit('init', socket.id);
         const distribution = this.bindings.get(session.id).distribution;
@@ -115,6 +116,7 @@ class ClientSockets {
         const requireAdmin = () => { if (!client.admin) throw new Error('Admin role required'); };
         guard('join_session', id => this.join(client, typeof id === 'string' ? id : id?.sessionId), 'session_rejected');
         guard('request_sessions', () => socket.emit('sessions_list', this.sessions.list()));
+        guard('request_terrain_presets', () => socket.emit('terrain_presets', { sessionId: client.session.id, presets: terrainPresets, selected: client.session.data.map.terrain.preset || null }));
         guard('register_actor', input => {
             if (client.admin) throw new Error('Observers cannot register actors');
             const existed = client.session.data.actors.has(socket.id);
@@ -179,6 +181,10 @@ class ClientSockets {
         guard('admin_disable_object_collisions', () => {
             requireAdmin();
             this.broadcast(client.session, 'collision_settings', client.session.disableObjectCollisions());
+        });
+        guard('admin_set_terrain_preset', preset => {
+            requireAdmin();
+            this.broadcast(client.session, 'terrain_changed', client.session.setTerrainPreset(preset));
         });
         guard('admin_flatten_terrain', () => {
             requireAdmin();

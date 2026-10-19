@@ -78,7 +78,21 @@ export interface ActorBuildArtifacts {
   actorJson: ActorRegistrationPayload;
 }
 
+export type TerrainPresetId = 'valley' | 'plateau' | 'mountain-range' | 'flat' | 'corner-hills' | 'city-blocks';
+
+/** Catalog supplied by the server; IDs and labels originate in world.schema.json. */
+export interface TerrainPresetCatalog {
+  sessionId: string;
+  presets: Array<{id: TerrainPresetId; name: string; description: string}>;
+  selected: TerrainPresetId | null;
+}
+
+export interface TerrainChanged { sessionId: string; preset: TerrainPresetId | null; version: number; }
+
 export interface DtedTerrainData {
+  /** Optional metadata only; render transmitted elevations, never regenerate from preset/seed. */
+  preset?: TerrainPresetId;
+  seed?: number;
   type: 'dted';
   width: number;
   depth: number;
