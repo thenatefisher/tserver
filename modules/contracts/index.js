@@ -1,0 +1,21 @@
+const Ajv = require('ajv');
+const path = require('node:path');
+const schemaRoot = path.resolve(__dirname, '../../tbn/schemas');
+const schemas = Object.fromEntries(['actor', 'mesh', 'actions', 'world', 'state'].map(name => [name, require(path.join(schemaRoot, `${name}.schema.json`))]));
+// Schemas own all structural/field limits. Invariants provide binary limits,
+// coordinate conventions and cadence that JSON Schema cannot express.
+const invariants = require('../../tbn/docs/invariants.json');
+const ajv = new Ajv({ allErrors: true, strict: false, strictNumbers: true });
+ajv.addSchema(schemas.mesh, 'mesh.schema.json');
+const validators = Object.fromEntries(Object.entries(schemas).map(([name, schema]) => [name, ajv.compile(schema)]));
+function validate(name, value) {
+    const validator = validators[name];
+    if (!validator) throw new Error(`Unknown contract: ${name}`);
+    if (!validator(value)) throw new Error(`${name}: ${ajv.errorsText(validator.errors, { separator: '; ' })}`);
+    return value;
+}
+const worldSize = Object.fromEntries(Object.entries(schemas.world.properties.size.properties).map(([axis, schema]) => [axis, schema.const]));
+const elevationScale = schemas.world.properties.terrain.properties.elevationScale.const;
+const orientationOrder = schemas.state.definitions.orientation.properties.order.const;
+const maxVisualSize = Object.fromEntries(Object.entries(schemas.mesh.properties.metadata.properties.visualSize.properties).map(([axis, schema]) => [axis, schema.maximum]));
+module.exports = { schemas, invariants, validate, worldSize, elevationScale, orientationOrder, maxVisualSize };

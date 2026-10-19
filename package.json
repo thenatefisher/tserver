@@ -1,19 +1,21 @@
 {
-  "name": "tanky",
+  "name": "tbn",
   "version": "1.0.0",
-  "description": "3D Tank Battle - Distributed Node LAN Game",
+  "description": "Distributed Node LAN Game",
   "main": "game-server.js",
   "scripts": {
     "host": "node game-server.js",
     "client": "node client-node.js",
-    "test": "node tbn/conformance-test.js",
+    "test": "node --test test/*.test.js",
     "start": "node game-server.js"
   },
   "keywords": [],
   "type": "commonjs",
   "dependencies": {
+    "ajv": "^8.20.0",
     "express": "^5.2.1",
     "socket.io": "^4.8.4",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "three": "^0.186.1"
   }
 }
