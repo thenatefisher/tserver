@@ -17,3 +17,5 @@ Protocol v2 actors additionally require `rotationalRates` (body-local angular ve
 An admin flatten publishes replacement `map_data` and repositioned actor state without reconnecting clients. On `terrain_flattened`, discard old interpolation history to prevent interpolating through the former hills. Keep input sequences increasing.
 
 Terrain preset selection behaves like flattening: replace world meshes on `map_data`, clear interpolation on `terrain_changed`, preserve sequence counters. `terrain.preset`/`seed` are optional metadata and must not replace rendering the received depth map.
+
+For aircraft stability controllers, [aircraft-controller.md](aircraft-controller.md) defines exact Euler/quaternion conversion and root-to-COM velocity reconstruction. Snapshots currently have no timestamps or simulation tick IDs. `lastInputSequence` is a consumption acknowledgment, and `data_version` is a resource version; neither supplies input application time or network RTT.

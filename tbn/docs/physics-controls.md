@@ -103,3 +103,7 @@ Ground/mecha controllers retain low powered rolling resistance (0.6 m/s²), but 
 ## Reverse steering
 
 Supported ground/mecha steering reverses with actual backward longitudinal motion, including backward coasting while forward throttle slows the vehicle. Below 0.1 m/s, throttle direction selects the sign; neutral stationary steering keeps its usual sign. Clients send the same left/right effort in reverse and must not invert it again locally. Airborne attitude and hover/aircraft/boat yaw retain their body-axis meanings. The server threshold is `physics.steeringReverseThreshold`.
+
+## Aircraft controller details
+
+For exact aircraft torque/inertia/damping, thrust/lift/drag equations, COM state reconstruction, timing limits and client stability/altitude/airspeed hold guidance, read [aircraft-controller.md](aircraft-controller.md). The guide distinguishes existing state fields from missing timestamps/latency telemetry.

@@ -98,3 +98,5 @@ And direct them to open `http://localhost:3000` in their browser.
 Terrain presets and session selection: read [`tbn/docs/terrain-presets.md`](tbn/docs/terrain-presets.md). Render all presets from received DTED samples; city blocks are raised heightfield terrain, not missing GLB buildings. Neutral ground throttle now applies stronger server coasting friction; avoid local velocity overrides that fight this authoritative response.
 
 Supported ground/mecha reverse steering is handled by the server from longitudinal travel direction. Do not invert client steering again when reversing; keep ordinary left/right control mappings. Airborne yaw remains body-axis attitude effort.
+
+Aircraft clients and stability/autopilot controllers must read [`tbn/docs/aircraft-controller.md`](tbn/docs/aircraft-controller.md). It specifies mass/inertia, torque and damping, exact force equations, state reconstruction and input timing. Snapshot timestamps and measured network-delay statistics are not currently transmitted; do not invent those fields or treat resource versions as simulation ticks.

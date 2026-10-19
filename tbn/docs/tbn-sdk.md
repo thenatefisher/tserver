@@ -70,3 +70,5 @@ Handle every `map_data` as a replacement, including admin flatten updates. Dispo
 Listen for `collision_settings` to mirror server terrain-only mode in any local prediction; keep visuals and terrain contact. `targets_removed` is informational: the preceding replacement `map_data.targets` list is authoritative, so remove stale target meshes. See [physics-controls.md](physics-controls.md#session-diagnostic-controls).
 
 `request_terrain_presets` returns the terrain catalog; preset IDs live in `world.schema.json`. On `terrain_changed`, reset old pose interpolation just as for `terrain_flattened`. See [terrain-presets.md](terrain-presets.md).
+
+Aircraft input adapters and autopilots should follow [aircraft-controller.md](aircraft-controller.md). Use body angular rates and reconstructed COM velocity for flight estimation; no snapshot timestamp or server clock-sync API is currently available.
