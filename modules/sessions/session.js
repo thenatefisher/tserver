@@ -11,7 +11,7 @@ const { PhysicsModel } = require('../physics');
 const { TerrainModel } = require('../terrain/model');
 const { ActorManager } = require('../actors/manager');
 const { validate, invariants } = require('../contracts');
-const { createMap, validateMap, sampleTerrainHeight, resetTargets } = require('../terrain');
+const { createMap, validateMap, resetTargets } = require('../terrain');
 
 class GameSession extends EventEmitter {
     /** Generate or clone a session terrain, build its physics/data/actor owners and leave timers stopped. */
@@ -24,11 +24,10 @@ class GameSession extends EventEmitter {
         this.data = new SessionData(id, { ...structuredClone(map), terrain: this.terrain.grid });
         this.hitEvents = [];
         this.physics = physicsFactory({
-            gravity: invariants.input.standardGravityMetersPerSecondSquared, rollingFriction: 0.6, density: 1,
-            ...environment, bounds: map.bounds, terrain: this.terrain,
-            groundHeight: position => sampleTerrainHeight(this.data.map.terrain, position.x, position.z)
+            gravity: invariants.input.standardGravityMetersPerSecondSquared, density: invariants.physics.density,
+            ...environment, bounds: map.bounds, terrain: this.terrain
         });
-        this.actors = new ActorManager(this.data, this.physics, { density: environment.density ?? 1, terrain: this.terrain });
+        this.actors = new ActorManager(this.data, this.physics, { density: environment.density ?? invariants.physics.density, terrain: this.terrain });
         this.timers = [];
     }
     /** Return public identity and connection/actor counts for discovery. */
@@ -37,7 +36,7 @@ class GameSession extends EventEmitter {
     snapshot() {
         const state = this.physics.getState();
         const publicState = {
-            actors: state.actors.map(({ id, name, health, position, velocity, orientation, rotationalRates }) => ({ id, name, health, position, velocity, orientation, rotationalRates })),
+            actors: state.actors.map(({ id, name, health, position, velocity, orientation, rotationalRates, grounded = false, lastInputSequence = -1 }) => ({ id, name, health, position, velocity, orientation, rotationalRates, grounded, lastInputSequence })),
             projectiles: state.projectiles,
             hitEvents: this.hitEvents.splice(0)
         };
@@ -51,7 +50,7 @@ class GameSession extends EventEmitter {
         const state = this.physics.step(actions, 1 / this.tickRate);
         for (const moved of state.actors) {
             const actor = this.data.actors.get(moved.id);
-            if (actor) for (const field of ['position', 'velocity', 'orientation', 'rotationalRates', 'centerVelocity', 'grounded']) actor[field] = moved[field];
+            if (actor) for (const field of ['position', 'velocity', 'orientation', 'rotationalRates', 'centerVelocity', 'grounded', 'lastInputSequence']) actor[field] = moved[field];
         }
         this.emit('tick');
     }
@@ -89,6 +88,6 @@ class GameSession extends EventEmitter {
     /** Clear this session’s timers without disposing its stored game data. */
     stop() { this.timers.forEach(clearInterval); this.timers = []; }
     /** Release owned listeners, sockets, timers and session state; does not delete external files. */
-    close() { this.stop(); this.removeAllListeners(); this.actors.bans.clear(); this.data.clear(); this.physics.state = { actors: [], projectiles: [], hitEvents: [] }; }
+    close() { this.stop(); this.removeAllListeners(); this.actors.bans.clear(); this.data.clear(); this.physics.close(); }
 }
 module.exports = { GameSession };

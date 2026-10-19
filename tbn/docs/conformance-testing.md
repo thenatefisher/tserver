@@ -22,3 +22,7 @@ python3 tbn/test_conformance.py --json
 1. Run `python3 tbn/test_conformance.py`.
 2. If tests fail (exit code 1), read `Semantic Feedback` and `Required Remediation Steps`.
 3. Apply fixes and re-run until exit code is 0.
+
+## Protocol v2 verification
+
+The placement/launch checker does not prove protocol or physics compatibility. Validate prepared actor JSON and example input frames against the shared schemas using a JSON Schema draft-07 validator (for example Ajv). Include `controller` in the profile; exercise complete control frames, version mismatch, sequence resets, blur/timeout, grounded jump edge and authoritative slope/landing rendering. The server repository additionally runs `npm test` for real Rapier and Socket.IO integration.

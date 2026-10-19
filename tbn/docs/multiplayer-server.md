@@ -30,7 +30,7 @@
 | Event | Payload | Description |
 |---|---|---|
 | `register_actor` | `{ name, clientType, physicsProfile, mesh }` | Register player vehicle (GLB + metadata). |
-| `action` (30Hz) | `{ linear?: {x?,y?,z?}, angular?: {x?,y?,z?} }` | Signals defined in `tbn/schemas/actions.schema.json`: `linear` in g, `angular` in rad/s²; linear X/Y/Z limits ±3/±1/±5 g; angular limits ±1 rad/s². Omitted parameters retain their previous value. |
+| `action` (30Hz) | `{protocolVersion:2, sequence, move:{x,y,z}, rotate:{x,y,z}, brake, jump}` | Complete normalized held-state frame; see [physics-controls.md](physics-controls.md). All axes required; stale input neutralizes after 250 ms. |
 | `request_mesh` | `actorId: string` | Request base64 GLB mesh for a remote actor. |
 
 ## Registration Payload (`register_actor`)
@@ -41,7 +41,8 @@ Generate attributes and prepare this package at build time, before execution or 
   "name": "VehicleName",
   "clientType": "custom-client",
   "physicsProfile": {
-    "maxSpeed": 25.0
+    "maxSpeed": 25.0,
+    "controller": "ground"
   },
   "mesh": {
     "glb": "<base64_uncompressed_glb>",
@@ -94,4 +95,22 @@ Generate attributes and prepare this package at build time, before execution or 
 - **Visual Size Limit**: Max `3m x 3m x 3m`.
 - **Polygon Limit**: Max `5,000` triangles.
 - **World Dimensions**: `1000m x 1000m x 1000m`; placement and clamping bounds come from server map data.
-- **Grounding**: Server sets authoritative `y` elevation via DTED terrain.
+- **Grounding**: Rapier resolves terrain contacts, impacts and bounce; a ground controller settles pitch/roll to the contact normal. Render authoritative attitude and Y without local clamping.
+
+## Protocol v2 and session lifecycle
+
+Every session selection/transfer sends `protocol_info` with `{protocolVersion:2, inputTimeoutSeconds:0.25, physics:{...}}`, including effective physics defaults and session overrides such as waterLevel. Reject unsupported versions visibly. `session_selected` indicates admission before registration; `registration_accepted` confirms a valid actor and the initial `session_joined` follows. `init` identifies the upstream actor and resets the input sequence on selection/transfer. `request_rejected` reports invalid actions, sequences or other requests without disconnecting the client. Legacy acceleration input is rejected, not translated.
+
+| Request | Response / effect |
+| --- | --- |
+| `request_sessions` | `sessions_list`: session descriptions |
+| `join_session` (string ID) | `session_joined` plus fresh resources, or `session_rejected` retaining current membership |
+| `request_world` / `request_map` | Current `map_data` |
+| `request_actors` | `actors_list` descriptors, including `physicsProfile` |
+| `request_data` `{sessionId,resource}` | Versioned resource payload |
+| `request_data_manifest` | `data_manifest` with required/sent/acknowledged versions |
+| `data_ack` `{sessionId,resource,version}` | Confirms a version actually sent to this connection |
+
+Resources are `terrain` (world wrapper), `registrations`, `state`, and `mesh:<actorId>`. Resource payload events are followed by `data_version` envelopes. Ack after caching. Opt in to unacknowledged-resource retries using upstream handshake `auth.sync:true`. Geometry is requested on demand; removal emits `data_removed` tombstones and manifest removal. A new session has independent receipt versions and terrain; discard old cache associations. Sessions isolate actors and simulation. A reconnect requires actor registration again.
+
+State actors now include `grounded` and `lastInputSequence` along with body angular rates. The simulation acknowledgment reflects a consumed control frame; old/duplicate sequences are rejected without extending the 250 ms lifetime. Read [physics-controls.md](physics-controls.md) for controller behavior and [tbn-sdk.md](tbn-sdk.md) for an implementation recipe.

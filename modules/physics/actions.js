@@ -1,16 +1,14 @@
 /**
- * Represent complete acceleration commands and merge partial action patches.
- * Inputs: Schema-validated linear/angular vectors and the previous complete command.
- * Outputs: New complete command objects; omitted components retain their values.
- * Side effects: None; validation/rejection occurs before these helpers are called.
- * Coupling: vector converts internal values; ActorManager performs the schema boundary check.
+ * Construct complete neutral control frames and copy accepted client controls.
+ * Inputs: Schema-validated v2 frames or an optional internal frame.
+ * Outputs: Independent complete frames; no partial merge or acceleration interpretation.
+ * Side effects: None. Coupling: ActorManager validates/rejects sequence order before storing frames.
  */
 const { vector } = require('./vector');
-/** Create complete internal linear/angular vectors from an already validated action. */
-function normalizeAction(action) { return { linear: vector(action?.linear), angular: vector(action?.angular) }; }
-/** Merge a partial command into previous vectors; omitted axes retain their values. */
-function mergeAction(previous, patch) {
-    const current = normalizeAction(previous);
-    return { linear: { ...current.linear, ...patch.linear }, angular: { ...current.angular, ...patch.angular } };
+const { schemas } = require('../contracts');
+/** Return a neutral held-state frame; sequence -1 is internal and never accepted on the wire. */
+function normalizeAction(action) {
+    return { protocolVersion: schemas.actions.properties.protocolVersion.const, sequence: action?.sequence ?? -1,
+        move: vector(action?.move), rotate: vector(action?.rotate), brake: action?.brake ?? 0, jump: action?.jump === true };
 }
-module.exports = { normalizeAction, mergeAction };
+module.exports = { normalizeAction };

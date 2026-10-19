@@ -26,4 +26,5 @@ const worldSize = Object.fromEntries(Object.entries(schemas.world.properties.siz
 const elevationScale = schemas.world.properties.terrain.properties.elevationScale.const;
 const orientationOrder = schemas.state.definitions.orientation.properties.order.const;
 const maxVisualSize = Object.fromEntries(Object.entries(schemas.mesh.properties.metadata.properties.visualSize.properties).map(([axis, schema]) => [axis, schema.maximum]));
-module.exports = { schemas, invariants, validate, worldSize, elevationScale, orientationOrder, maxVisualSize };
+const protocolVersion = schemas.actions.properties.protocolVersion.const;
+module.exports = { protocolVersion, schemas, invariants, validate, worldSize, elevationScale, orientationOrder, maxVisualSize };

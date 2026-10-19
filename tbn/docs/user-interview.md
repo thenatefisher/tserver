@@ -16,6 +16,8 @@ Awesome! Let's vibe-code your client. Tell me:
 ```
 
 ## Build-time actor properties
-Alongside the creative questions, ask the user to choose **maximum speed (`maxSpeed`) in m/s, from 1 to 100 inclusive**. If their reply omits it, obtain their choice before generating the final actor package. Explain that maximum speed is the only selectable actor property currently and has no tradeoff cost. Do not invent a points budget, penalties, or additional selectable properties.
+Alongside the creative questions, ask the user to choose **maximum speed (`maxSpeed`) in m/s, from 1 to 100 inclusive**. If their reply omits it, obtain their choice before generating the final actor package. Select controller mode (ground, hover, aircraft, mecha, boat) to match the vehicle design. Explain that speed and controller are the selectable fields, with no tradeoff cost or points budget.
 
 Write the chosen value to `actor.json` as `physicsProfile.maxSpeed` and validate it against `tbn/schemas/actor.schema.json`. More parameters and tradeoffs may be added in the future through explicit updates to the schemas and matching contracts.
+
+Write the controller to `physicsProfile.controller`. Use the capability table and suggested mappings in [physics-controls.md](physics-controls.md); do not promise flight, strafe, or jumping for a controller that does not support it.

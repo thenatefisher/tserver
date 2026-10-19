@@ -6,6 +6,7 @@ const { once } = require('node:events');
 const { io } = require('socket.io-client');
 const { createGameServer } = require('../game-server');
 const meshFixture = require('./mesh-fixture');
+const frame = require('./control-frame');
 const logger = { info() {}, error() {}, debug() {} };
 function event(socket, name, predicate = () => true) {
     return new Promise((resolve, reject) => {
@@ -21,7 +22,8 @@ async function connect(t, url, auth = {}, options = {}) {
     const socket = io(url, { autoConnect: false, reconnection: false, transports: ['websocket'], auth, ...options });
     t.after(() => socket.close());
     const joined = event(socket, auth.role === 'admin' ? 'session_joined' : 'session_selected');
-    socket.connect(); await joined;
+    const protocol = event(socket, 'protocol_info');
+    socket.connect(); await joined; socket.protocolInfo = await protocol;
     return socket;
 }
 
@@ -68,8 +70,14 @@ test('HTTP, UDP discovery, sessions, legacy events, and data receipts work end t
     const accepted = event(player, 'registration_accepted');
     player.emit('register_actor', meshFixture.registration({ name: 'Player' }));
     assert.equal((await accepted).triangles, 12);
+    assert.equal(player.protocolInfo.protocolVersion, 2);
+    const oldAction = event(player, 'request_rejected'); player.emit('action', { linear: { x: 1 } });
+    assert.match((await oldAction).reason, /actions:/);
     const rotated = event(player, 'state', snapshot => snapshot.actors.some(a => a.id === player.id && a.rotationalRates.z > 0));
-    player.emit('action', { linear: { z: 5 }, angular: { z: 1 } }); await rotated;
+    player.emit('action', frame({ jump: true, rotate: { z: 1 } }));
+    assert.equal((await rotated).actors.find(a => a.id === player.id).lastInputSequence, 0);
+    const stale = event(player, 'request_rejected'); player.emit('action', frame());
+    assert.match((await stale).reason, /sequence/);
     const meshReceived = event(admin, 'mesh_geometry');
     admin.emit('request_mesh', player.id);
     assert.equal((await meshReceived).glb, meshFixture().glb);
@@ -91,6 +99,8 @@ test('HTTP, UDP discovery, sessions, legacy events, and data receipts work end t
 
     const removedGeometry = event(admin, 'data_removed', value => value.resource === meshResource);
     const movedSession = event(player, 'session_joined'); player.emit('join_session', 'second'); await movedSession; await removedGeometry;
+    const consumed = event(player, 'state', s => s.actors.some(a => a.id === player.id && a.lastInputSequence === 0));
+    player.emit('action', frame()); await consumed;
     assert.equal(defaultSession.data.actors.size, 0);
     assert.equal(defaultSession.data.meshes.size, 0);
     assert.equal(defaultSession.data.clients.has(player.id), false);
@@ -153,4 +163,23 @@ test('CLI debug excludes simulation ticks and socket sends and shuts down cleanl
     assert.equal((await exited)[0], 0);
     assert.match(output, /\[DEBUG/); assert.match(output, /http.request/);
     assert.ok(!output.includes('simulation.tick')); assert.ok(!output.includes('socket.send'));
+});
+
+
+test('framework relay forwards v2 announcements, registration, controls and rejection feedback', { timeout: 10000 }, async t => {
+    const { ClientNode } = require('../tbn/client-node');
+    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger });
+    t.after(() => server.close()); await server.start();
+    const relay = new ClientNode({ localPort: 0, debug: false, serverUrl: `http://127.0.0.1:${server.http.address().port}`, actorRegistration: meshFixture.registration() });
+    t.after(() => relay.stop());
+    const registered = once(relay, 'game:registration_accepted'); await relay.start(); await registered;
+    const browser = io(`http://127.0.0.1:${relay.localPort}`, { autoConnect: false, transports: ['websocket'] });
+    t.after(() => browser.close());
+    const announcement = event(browser, 'protocol_info'), registration = event(browser, 'registration_accepted');
+    browser.connect(); assert.equal((await announcement).protocolVersion, 2);
+    assert.equal((await registration).physicsProfile.controller, 'ground');
+    const acknowledged = event(browser, 'state', s => s.actors.some(a => a.lastInputSequence === 17));
+    browser.emit('action', frame({ sequence: 17 })); await acknowledged;
+    const rejection = event(browser, 'request_rejected'); browser.emit('action', frame({ sequence: 16 }));
+    assert.match((await rejection).reason, /sequence/);
 });

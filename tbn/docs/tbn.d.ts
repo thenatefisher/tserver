@@ -20,10 +20,11 @@ export interface ClientEulerAngles extends Vec3 {
   order: 'XYZ';
 }
 
-/** Build-time user choices from actor.schema.json: only maxSpeed; no tradeoffs yet. */
+/** Build-time choices from actor.schema.json; no points budget. */
 export interface PhysicsProfile {
   /** Required maximum speed in m/s, inclusive range [1, 100]. */
   maxSpeed: number;
+  controller: 'ground' | 'hover' | 'aircraft' | 'mecha' | 'boat';
 }
 
 export interface GroundingMetadata {
@@ -99,22 +100,27 @@ export interface MapData extends WorldDimensions {
   targets?: any[];
 }
 
-/**
- * Linear X/Y/Z components are bounded by ±3/±1/±5 g; angular components by ±1 rad/s².
- * Only x, y, z are allowed; omitted parameters retain their previous value (tbn/schemas/actions.schema.json).
- * TypeScript cannot enforce numeric ranges or exact object keys at runtime.
- */
-export interface NormalizedActionVector {
-  x?: number;
-  y?: number;
-  z?: number;
+/** Required complete normalized control vector. Each component is [-1,1]; validate ranges at runtime. */
+export interface ControlEffort extends Vec3 {}
+
+/** Complete protocol-v2 held-state frame; see physics-controls.md for mode-specific interpretation. */
+export interface ActionInput {
+  protocolVersion: 2;
+  /** Strictly increasing nonnegative safe integer for this registration/session. */
+  sequence: number;
+  move: ControlEffort;
+  rotate: ControlEffort;
+  /** [0,1] active braking; neutral controls alone do not stop inertia. */
+  brake: number;
+  /** Grounded false-to-true request; held true does not repeat. */
+  jump: boolean;
 }
 
-export interface ActionInput {
-  /** Linear acceleration in g (9.81 m/s^2), X/Y/Z limits ±3/±1/±5: +X forward, +Y left, +Z up. */
-  linear?: NormalizedActionVector;
-  /** Angular acceleration in rad/s^2, each axis in [-1, 1], about body axes through the center of mass. */
-  angular?: NormalizedActionVector;
+export interface ProtocolInfo {
+  protocolVersion: 2;
+  inputTimeoutSeconds: number;
+  /** Effective server-owned physics policy, including waterLevel (world Y). */
+  physics: Record<string, number | string>;
 }
 
 export interface ActorState {
@@ -125,6 +131,10 @@ export interface ActorState {
   velocity: Vec3;
   /** Body-axis Euler radians in XYZ order, then convert body basis to world. */
   orientation: ClientEulerAngles;
+  /** Body angular velocity in rad/s. */
+  rotationalRates: Vec3;
+  grounded: boolean;
+  lastInputSequence: number;
 }
 
 export interface GameStateUpdate {

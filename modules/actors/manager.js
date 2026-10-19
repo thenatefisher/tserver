@@ -8,15 +8,14 @@
 const { decodeGlb, validateGlb } = require('./glb');
 const { validateMeshMetadata } = require('./validation');
 const { HITBOX_SIZE, MAX_VISUAL_SIZE, DEFAULT_HEALTH } = require('./constants');
-const { validate, orientationOrder } = require('../contracts');
-const { mergeAction } = require('../physics/actions');
+const { validate, orientationOrder, invariants } = require('../contracts');
+const { normalizeAction } = require('../physics/actions');
 const { createSolidBody } = require('../physics/body');
 const { terrainContact } = require('../physics/contacts');
-const { sampleTerrainHeight } = require('../terrain');
 
 class ActorManager {
     /** Retain session-owned stores/model and the shared terrain/density policy; allocates the session ban set. */
-    constructor(data, physics, { density = 1, terrain } = {}) {
+    constructor(data, physics, { density = invariants.physics.density, terrain } = {}) {
         this.data = data;
         this.physics = physics;
         this.density = density; this.terrain = terrain;
@@ -28,11 +27,12 @@ class ActorManager {
     create(id, address) {
         if (this.isBanned(address)) throw new Error('Client is banned from this session');
         const x = (Math.random() - 0.5) * 40, z = (Math.random() - 0.5) * 40;
+        const height = this.terrain.heightAt(x, z);
         const actor = {
             id, address, connectedAt: Date.now(), name: `NodeActor_${id.slice(0, 4)}`, clientType: 'standard-node',
-            position: { x, y: sampleTerrainHeight(this.data.map.terrain, x, z), z },
+            position: { x, y: Number.isFinite(height) ? height : 0, z },
             velocity: { x: 0, y: 0, z: 0 }, orientation: { x: 0, y: 0, z: 0, order: orientationOrder }, rotationalRates: { x: 0, y: 0, z: 0 },
-            health: DEFAULT_HEALTH, maxHealth: DEFAULT_HEALTH, physicsProfile: {}, action: {}
+            health: DEFAULT_HEALTH, maxHealth: DEFAULT_HEALTH, physicsProfile: {}, action: normalizeAction()
         };
         this.data.actors.set(id, actor);
         this.physics.addActor(actor);
@@ -71,21 +71,25 @@ class ActorManager {
             if (actualSize > MAX_VISUAL_SIZE[axis] || Math.abs(actualSize - metadata.visualSize[axis]) > 0.01) throw new Error('Declared visualSize does not match transformed GLB');
         }
         const body = createSolidBody(info, this.density);
-        actor.body = body;
-        this.place(actor);
-        actor.name = input.name;
-        actor.clientType = input.clientType;
-        actor.physicsProfile = { ...input.physicsProfile };
-        this.physics.addActor(actor);
-        const descriptor = { id, name: actor.name, clientType: actor.clientType, triangles: info.triangles, hitbox: { ...HITBOX_SIZE }, metadata };
+        const next = { ...actor, position: { ...actor.position }, body, name: input.name,
+            clientType: input.clientType, physicsProfile: { ...input.physicsProfile },
+            action: normalizeAction(), lastInputSequence: -1 };
+        this.place(next);
+        // Construct the new Rapier collider before committing registration/resource mutations.
+        this.physics.addActor(next);
+        Object.assign(actor, next);
+        const descriptor = { id, physicsProfile: { ...actor.physicsProfile }, name: actor.name, clientType: actor.clientType, triangles: info.triangles, hitbox: { ...HITBOX_SIZE }, metadata };
         this.data.register(id, descriptor, { id, buffer, metadata, triangles: info.triangles, hitbox: { ...HITBOX_SIZE } });
         return descriptor;
     }
-    /** Validate and merge a partial action into the session actor; invalid commands leave it unchanged. */
+    /** Validate and replace a complete control frame into the session actor; invalid commands leave it unchanged. */
     action(id, input) {
         validate('actions', input);
         const actor = this.data.actors.get(id);
-        if (actor) actor.action = mergeAction(actor.action, input);
+        if (actor) {
+            if (input.sequence <= actor.action.sequence) throw new Error('Input sequence must increase; v2 complete control frame required');
+            actor.action = normalizeAction(input);
+        }
     }
     /** Remove an actor, model state and cached registration/GLB; publish a mesh tombstone when needed. */
     remove(id) {

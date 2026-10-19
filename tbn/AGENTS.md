@@ -22,7 +22,7 @@ Awesome! Let's vibe-code your custom TBN client. Tell me:
 ```
 *Wait for the user's response before proceeding.*
 
-Also ask for their build-time actor property choice: maximum speed (`maxSpeed`) in m/s, inclusive range [1, 100]. Obtain this choice before generating the final `actor.json`. Currently `maxSpeed` is the only selectable property; no tradeoff system exists. Do not invent additional properties, costs, penalties, or a points budget. Future parameters and tradeoffs require explicit schema and contract updates. Store the selected value in `actor.json` as `physicsProfile.maxSpeed`.
+Also ask for their build-time actor property choice: maximum speed (`maxSpeed`) in m/s, inclusive range [1, 100]. Obtain this choice before generating the final `actor.json`. Also select `physicsProfile.controller` from ground, hover, aircraft, mecha, boat according to the chosen vehicle design. Both fields are required; no tradeoff or points budget exists. Read `tbn/docs/physics-controls.md` before implementing controls or rendering. Store the selected value in `actor.json` as `physicsProfile.maxSpeed`.
 
 ---
 
@@ -32,14 +32,14 @@ Once the user replies with their aesthetic and vehicle preferences, review and s
 - **Machine-Readable Invariants**: [`tbn/docs/invariants.json`](tbn/docs/invariants.json)
 - **TypeScript Contracts**: [`tbn/docs/tbn.d.ts`](tbn/docs/tbn.d.ts)
 - **Server Data**: [`tbn/schemas/world.schema.json`](tbn/schemas/world.schema.json) is delivered once on connection and again on request. [`tbn/schemas/state.schema.json`](tbn/schemas/state.schema.json) defines full game-state snapshots at approximately 15 Hz: all actors including the player, projectile position/velocity, and hit events. Actor orientation is Euler radians in XYZ order. Cache world data separately from moving state and deduplicate hit effects by event ID.
-- **Mandatory Actor Registration**: [`tbn/schemas/actor.schema.json`](tbn/schemas/actor.schema.json), referencing [`tbn/schemas/mesh.schema.json`](tbn/schemas/mesh.schema.json). Prepare and validate the actor package at build time. Send `register_actor` on every server connection, including reconnects, before joining a session. Socket connection success alone is insufficient. Required actor fields are `name` (at most 30 characters), `clientType`, `physicsProfile` with `maxSpeed` in [1, 100], and `mesh`.
-- **Client Signals**: [`tbn/schemas/actions.schema.json`](tbn/schemas/actions.schema.json). `linear` is linear acceleration in g (1 g = 9.81 m/s²); `angular` is angular acceleration in rad/s² about the body axes through the center of mass. Linear limits are X [-3, 3] g, Y [-1, 1] g, Z [-5, 5] g; angular components remain [-1, 1] rad/s². Vectors and components are optional; omitted parameters retain their previous value. Send explicit zeros to clear acceleration commands. No other action fields are allowed, including `fire`. Preserve all three axes regardless of vehicle design or control mappings.
+- **Mandatory Actor Registration**: [`tbn/schemas/actor.schema.json`](tbn/schemas/actor.schema.json), referencing [`tbn/schemas/mesh.schema.json`](tbn/schemas/mesh.schema.json). Prepare and validate the actor package at build time. Send `register_actor` on every server connection, including reconnects, before joining a session. Socket connection success alone is insufficient. Required actor fields are `name` (at most 30 characters), `clientType`, `physicsProfile` with `maxSpeed` in [1, 100], and `mesh`; `physicsProfile.controller` is also required.
+- **Client Signals**: [`tbn/schemas/actions.schema.json`](tbn/schemas/actions.schema.json) is protocol v2: complete `protocolVersion`, increasing `sequence`, normalized `move` and `rotate` XYZ vectors, `brake`, and `jump`. All fields/components are required. Inputs are control effort, not acceleration. Read [`tbn/docs/physics-controls.md`](tbn/docs/physics-controls.md) for controller capabilities, grounded pitch suppression, jump edges, 250 ms timeout, sequencing, compatibility, input mappings and rendering. Reject old `linear`/`angular` examples. Surface `protocol_info` mismatches and rejection reasons in the HUD.
 
 Key Non-Negotiables:
 The server enforces mesh volume of at least 1 m³ and a fixed 2 m cube hitbox centered at the actor origin (X/Y/Z [-1, 1]). Do not expose either as a user-selectable property or add client-supplied hitbox/volume fields. Build the GLB to satisfy these server rules.
 
 1. **Network Ports**: Central Host is `http://<host>:4000` (UDP beacon `4001`). Local relay binds `http://localhost:3000`.
-2. **Coordinate Conventions**: Body frame is **`+X` = forward**, **`+Y` = left**, **`+Z` = up** (NOT Three.js `-Z`!). Grounding is strictly `contactPlaneZ = 0.0`.
+2. **Coordinate Conventions**: Body frame is **`+X` = forward**, **`+Y` = left**, **`+Z` = up** (NOT Three.js `-Z`!). Author geometry with `contactPlaneZ = 0.0`; the server subsequently determines world terrain contact and attitude.
 3. **Geometry Budgets**: Hitbox `2m x 2m x 2m`. Visual size at most `3m x 3m x 3m` in a `1km x 1km x 1km` world. Only GLB version 2 is supported. Maximum decoded GLB size is `16 * 1024 * 1024` bytes (16 MiB), with at most 5,000 triangles.
 4. **DTED Terrain**: Configurable world-X/Z row-major grid defined in `tbn/schemas/world.schema.json`. Integer heights use 0.1 m units; multiply by `elevationScale = 0.1`. At 0.25 m spacing, a 1 km extent has 4000 posts per axis (far boundary excluded). Use transmitted dimensions and spacing, never hardcode resolution.
 5. **Client Rotations**: Always use Euler angles in radians with explicit `XYZ` order. Enforce this in generated client logic and rendering calls. Convert other incoming representations at the boundary while preserving the server wire format. x = roll, y = pitch, z = yaw.
@@ -84,12 +84,13 @@ And direct them to open `http://localhost:3000` in their browser.
 
 | Topic | Document Path | Description |
 |---|---|---|
+| **Physics & Controls v2** | [`tbn/docs/physics-controls.md`](tbn/docs/physics-controls.md) | **Mandatory.** Rapier controllers, input lifecycle, slope attitude, jumps, bounce and rendering. |
 | **0. System Invariants** | [`tbn/docs/invariants.md`](tbn/docs/invariants.md) | **Mandatory.** Ports, body frame coordinates (+X forward), limits, DTED math, and schemas. |
 | **1. Game Construction Rules** | [`tbn/docs/client-rules.md`](tbn/docs/client-rules.md) | Root placement only, strict immutability of `tbn/`, forbidden entry points, `node client.js`. |
 | **2. Multiplayer Server & Protocol** | [`tbn/docs/multiplayer-server.md`](tbn/docs/multiplayer-server.md) | Socket.IO server, 30Hz loop, event lifecycles, and combat. |
 | **3. System Architecture** | [`tbn/docs/architecture.md`](tbn/docs/architecture.md) | 3-tier architecture: Authoritative Host, Local Node Relay, Browser Presentation. |
 | **4. TBN SDK Integration** | [`tbn/docs/tbn-sdk.md`](tbn/docs/tbn-sdk.md) | `TbnSDK.connect()`, map receipt, actor registration, state updates, hit events. |
 | **5. Actor Geometry & GLB** | [`tbn/docs/actor-geometry-glb.md`](tbn/docs/actor-geometry-glb.md) | GLB limits (<=5k triangles), hitbox, contactPlaneZ=0 grounding, projectile hardpoints. |
-| **6. DTED Terrain Specs** | [`tbn/docs/dted-terrain.md`](tbn/docs/dted-terrain.md) | Row-major elevation grid, bilinear height sampling, mesh generation. |
+| **6. DTED Terrain Specs** | [`tbn/docs/dted-terrain.md`](tbn/docs/dted-terrain.md) | Row-major elevation grid, triangle height sampling, mesh generation. |
 | **7. User Vibe-Coding Interview** | [`tbn/docs/user-interview.md`](tbn/docs/user-interview.md) | 4 creative interview questions to ask upon `start tbn`. |
 | **8. Conformance Testing** | [`tbn/docs/conformance-testing.md`](tbn/docs/conformance-testing.md) | Automated testing with `python3 tbn/test_conformance.py`. |

@@ -31,3 +31,7 @@
 
 ## Build-time actor artifacts
 Before executing the client or connecting to the server, generate both `actor.glb` and `actor.json`. Use a simple stick man when the user has not described an actor; otherwise implement their description. `actor.json` must conform to `tbn/schemas/actor.schema.json` and its referenced `tbn/schemas/mesh.schema.json`, with `mesh.glb` equal to base64 of the exact `actor.glb` bytes. Validate GLB version 2, decoded size at most 16 MiB, at most 5,000 triangles, and the geometry invariants. Regenerate the JSON whenever the GLB changes. Load the prepared package at runtime and submit it on each server connection.
+
+## Protocol v2 client behavior
+
+Use [physics-controls.md](physics-controls.md) before implementing input or rendering. Send complete normalized held-state frames with monotonic sequences, refresh neutral input at 30 Hz, clear controls on blur, check `protocol_info`, show rejection reasons, and register the selected controller on reconnect. The server owns terrain attitude, gravity, jump eligibility and bounce. Client agents must not alter framework files to bypass validation.

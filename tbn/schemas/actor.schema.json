@@ -20,7 +20,8 @@
     "physicsProfile": {
       "type": "object",
       "required": [
-        "maxSpeed"
+        "maxSpeed",
+        "controller"
       ],
       "properties": {
         "maxSpeed": {
@@ -28,9 +29,20 @@
           "minimum": 1.0,
           "maximum": 100.0,
           "description": "User-selected maximum speed in m/s, chosen at build time. No current tradeoff cost."
+        },
+        "controller": {
+          "type": "string",
+          "enum": [
+            "ground",
+            "hover",
+            "aircraft",
+            "mecha",
+            "boat"
+          ],
+          "description": "Server movement controller. Ground=tracked/wheeled drive; hover=stabilized terrain-relative thrusters; aircraft=powered simplified flight; mecha=ground strafe/jump; boat=buoyancy at session waterLevel. See docs/physics-controls.md for supported axes and limitations."
         }
       },
-      "description": "Build-time user-selected actor properties. Currently only maxSpeed is selectable; no tradeoff system exists yet. Future parameters and tradeoffs require explicit schema updates.",
+      "description": "Build-time controller selection and maximum speed; other physics tuning is server-owned. No points budget.",
       "additionalProperties": false
     },
     "mesh": {

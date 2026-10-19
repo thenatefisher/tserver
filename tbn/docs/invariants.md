@@ -27,11 +27,11 @@ TBN gives users and their agents the scaffolding to create their own games. Ever
 
 ### Body Frame (Vehicle Local)
 This is a right-handed frame: +X cross +Y = +Z. Positive roll, pitch, and yaw follow the right-hand rule about +X, +Y, and +Z respectively.
-- **`+X` = Forward (Nose)**: Positive acceleration `linear.x > 0` drives forward. Heading angle $0^\circ$ points along $+X$.
+- **`+X` = Forward (Nose)**: Positive control effort `move.x > 0` drives forward. Heading angle $0^\circ$ points along $+X$.
 - **`+Y` = Left (Port)**: Lateral axis.
 - **`+Z` = Up (Roof)**: Elevation/normal axis.
 - **Rotations**:
-  - `yaw` = Rotation about **$+Z$** (steering). Positive angular acceleration `angular.z > 0` turns counter-clockwise when viewed from above.
+  - `yaw` = Rotation about **$+Z$** (steering). Positive yaw control `rotate.z > 0` turns counter-clockwise when viewed from above.
   - `pitch` = Rotation about $+Y$.
   - `roll` = Rotation about $+X$.
 
@@ -63,7 +63,7 @@ The server enforces a minimum actor mesh volume of **1 m³** from the submitted 
 | **Max Visual Extents** | `3m (X) x 3m (Y) x 3m (Z)` | **Hard limit** | GLB bounding box must not exceed this or registration is rejected. |
 | **Polygon Budget** | $\le 5,000$ triangles | **Hard limit** | Uncompressed binary `.glb` base64 string. |
 | **Simulation Rate** | $30\text{ Hz}$ | **Authoritative** | Fixed timestep $\Delta t = 1/30 \approx 0.0333\text{ s}$. |
-| **Input Clamping** | Per-axis schema limits | **Authoritative** | Linear X/Y/Z limits are ±3/±1/±5 g; angular limits are ±1 rad/s². Invalid values are rejected. |
+| **Input Clamping** | Per-axis schema limits | **Authoritative** | Movement/rotation effort is [-1, 1] per axis; brake [0, 1]. Complete v2 frames required; invalid values rejected. |
 
 ---
 
@@ -78,24 +78,24 @@ The terrain is a configurable Digital Terrain Elevation Data (DTED) post grid de
 - Row-major indexing: `index = row * columns + column`. The array length must equal `rows * columns`.
 - Verify dimension/spacing/count relationships at runtime; JSON Schema cannot compare or multiply property values.
 
-### Canonical Bilinear Height Sampling Function
-Agents must use this exact reference logic to sample elevation:
+### Canonical physical height sampling
+
+Use the Rapier collision mesh diagonal and boundary extension in [dted-terrain.md](dted-terrain.md). Bilinear interpolation is not the authoritative collision surface. This helper matches triangular heights; a NaN denotes missing terrain:
 
 ```javascript
-function sampleTerrainHeight(x, z, terrain) {
-    const gx = Math.max(0, Math.min(terrain.columns - 1, (x - terrain.origin.x) / terrain.spacing.x));
-    const gz = Math.max(0, Math.min(terrain.rows - 1, (z - terrain.origin.z) / terrain.spacing.z));
-    const x0 = Math.floor(gx), z0 = Math.floor(gz);
-    const x1 = Math.min(x0 + 1, terrain.columns - 1), z1 = Math.min(z0 + 1, terrain.rows - 1);
-    const tx = gx - x0, tz = gz - z0;
+function sampleTerrainHeight(x, z, t) {
+    const gx = Math.max(0, Math.min(t.columns, (x - t.origin.x) / t.spacing.x));
+    const gz = Math.max(0, Math.min(t.rows, (z - t.origin.z) / t.spacing.z));
+    const col = Math.min(t.columns - 1, Math.floor(gx));
+    const row = Math.min(t.rows - 1, Math.floor(gz));
+    const tx = Math.min(1, gx - col), tz = Math.min(1, gz - row);
     const at = (c, r) => {
-        const value = terrain.depthMap[r * terrain.columns + c];
-        if (value === terrain.noDataValue) throw new Error('Missing terrain elevation');
-        return value * terrain.elevationScale;
+        const v = t.depthMap[Math.min(r, t.rows - 1) * t.columns + Math.min(c, t.columns - 1)];
+        return v === t.noDataValue ? NaN : v * t.elevationScale;
     };
-    const s = at(x0, z0) * (1 - tx) + at(x1, z0) * tx;
-    const n = at(x0, z1) * (1 - tx) + at(x1, z1) * tx;
-    return s * (1 - tz) + n * tz;
+    const a = at(col, row), b = at(col + 1, row), c = at(col, row + 1), d = at(col + 1, row + 1);
+    return tx + tz <= 1 ? a * (1 - tx - tz) + b * tx + c * tz :
+        b * (1 - tz) + c * (1 - tx) + d * (tx + tz - 1);
 }
 ```
 
@@ -104,7 +104,7 @@ function sampleTerrainHeight(x, z, terrain) {
 ## 5. Socket.IO Protocol Schemas
 
 ### Registration Payload (`register_actor`)
-At build time, let the user select `physicsProfile.maxSpeed` in m/s, inclusive range [1, 100]. It is currently the only selectable actor property, and there are no tradeoffs or allocation costs. Do not add other physics profile fields. Future selectable parameters and tradeoffs will be introduced through explicit updates to the actor schema and matching contracts. Example values below illustrate the payload shape; use the user's selected speed in the generated package.
+At build time, let the user select `physicsProfile.maxSpeed` in m/s, inclusive range [1, 100]. Also choose `controller` from ground, hover, aircraft, mecha, boat to match the vehicle. These are the only selectable fields; there are no tradeoffs or allocation costs. Future selectable parameters and tradeoffs will be introduced through explicit updates to the actor schema and matching contracts. Example values below illustrate the payload shape; use the user's selected speed in the generated package.
 
 Required build outputs in the recipient's project root are `./actor.glb` and `./actor.json`. Default to a simple stick man if the user supplies no actor description. The JSON is the complete registration package and its `mesh.glb` must decode to the exact bytes of `actor.glb`. Generate and validate both before execution or connection, and keep them synchronized when either changes.
 
@@ -120,7 +120,8 @@ Example package:
   "name": "PlayerVehicle",
   "clientType": "custom-client",
   "physicsProfile": {
-    "maxSpeed": 25.0
+    "maxSpeed": 25.0,
+    "controller": "ground"
   },
   "mesh": {
     "glb": "<base64_uncompressed_glb>",
@@ -170,15 +171,4 @@ Example package:
 ### 30Hz Action Payload (`action`)
 The invariant validation schema is [`actions.schema.json`](tbn/schemas/actions.schema.json), with matching constants in [`invariants.json`](tbn/docs/invariants.json) and types in [`tbn.d.ts`](tbn/docs/tbn.d.ts).
 
-Every player may send linear acceleration commands along **all three body axes** using `linear` and angular acceleration commands about **all three body axes through the center of mass** using `angular`. Linear X/Y/Z components have inclusive limits **±3/±1/±5 g**, respectively. Angular components have inclusive limits **±1 rad/s²**. Linear `linear` is measured in g (1 g = 9.81 m/s²); `angular` is measured in rad/s². Neither vector accepts additional properties. Both vectors and all their axis components are optional. Omitted parameters retain their previous value. Send explicit zeros to stop movement or rotation. Only `linear` and `angular` are allowed; `fire` is not a supported signal.
-
-Body axes are +X forward, +Y left, and +Z up. Forward movement and yaw steering are examples, not restrictions to `linear.x` and `angular.z`. Never remove the other axes from the protocol because of a vehicle design, input mapping, or learned game convention. The input contract defines commands that can be sent; physical response remains governed by the authoritative server simulation.
-
-Sent to server on every simulation tick:
-```json
-{
-  "linear": { "x": 1.0, "y": 0.0, "z": 0.0 },
-  "angular": { "x": 0.0, "y": 0.0, "z": 0.5 }
-}
-```
-*Note: `linear.x` drives forward/reverse (+3.0 is full forward); `angular.z` steers yaw.*
+Every player sends complete normalized control frames defined by `tbn/schemas/actions.schema.json`. See [Physics and controls v2](physics-controls.md) for all fields, controller capabilities, sequence reset rules, stale-input timeout, jump edges, contact behavior and migration. `move` and `rotate` components are effort [-1, 1], not physical accelerations. Partial/v1 inputs are rejected. The server supplies gravity and actor-specific actuation; clients render authoritative poses.

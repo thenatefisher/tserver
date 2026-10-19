@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "name": "TBN System Invariants",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "network": {
     "serverPort": 4000,
     "udpDiscoveryPort": 4001,
@@ -113,44 +113,20 @@
       "columns": 4000,
       "rows": 4000,
       "sampleCount": 16000000
-    }
+    },
+    "collisionTopology": "triangles (a,c,b) and (b,c,d); last row/column extended to far boundary"
   },
   "input": {
     "actionSchema": "tbn/schemas/actions.schema.json",
+    "protocolVersion": 2,
     "coordinateFrame": "body",
-    "linearAccelerationAxes": [
-      "x",
-      "y",
-      "z"
-    ],
-    "omittedParameters": "retainPreviousValue",
-    "angularAccelerationAxes": [
-      "x",
-      "y",
-      "z"
-    ],
-    "angularAccelerationReferencePoint": "centerOfMass",
-    "linearAccelerationUnit": "g",
-    "standardGravityMetersPerSecondSquared": 9.81,
-    "angularAccelerationUnit": "rad/s^2",
-    "linearComponentLimits": {
-      "x": {
-        "minimum": -3,
-        "maximum": 3
-      },
-      "y": {
-        "minimum": -1,
-        "maximum": 1
-      },
-      "z": {
-        "minimum": -5,
-        "maximum": 5
-      }
-    },
-    "angularComponentLimits": {
-      "minimum": -1,
-      "maximum": 1
-    }
+    "semantics": "normalizedControlEffort",
+    "frame": "completeHeldState",
+    "sequence": "strictlyIncreasingPerConnectionAndSession",
+    "inputTimeoutSeconds": 0.25,
+    "jump": "groundedRisingEdge",
+    "unsupportedControls": "noActuation",
+    "standardGravityMetersPerSecondSquared": 9.81
   },
   "actorRegistration": {
     "schema": "tbn/schemas/actor.schema.json",
@@ -167,7 +143,8 @@
     "requiredOnEveryConnection": true,
     "nameMaxLength": 30,
     "requiredPhysicsAttributes": [
-      "maxSpeed"
+      "maxSpeed",
+      "controller"
     ],
     "maxSpeedMinimum": 1,
     "maxSpeedMaximum": 100,
@@ -184,10 +161,12 @@
     "propertySelection": {
       "at": "buildTime",
       "userSelectable": [
-        "maxSpeed"
+        "maxSpeed",
+        "controller"
       ],
       "units": {
-        "maxSpeed": "m/s"
+        "maxSpeed": "m/s",
+        "controller": "enum"
       },
       "tradeoffsEnabled": false,
       "additionalPropertiesAllowed": false,
@@ -217,5 +196,31 @@
     "orientationRepresentation": "Euler",
     "orientationUnits": "radians",
     "orientationOrder": "XYZ"
+  },
+  "physics": {
+    "engine": "Rapier",
+    "density": 1,
+    "restitution": 0.25,
+    "fixedSubstepSeconds": 0.008333333333333333,
+    "maxAngularSpeed": 3,
+    "forwardAcceleration": 29.43,
+    "lateralAcceleration": 9.81,
+    "verticalAcceleration": 49.05,
+    "angularAcceleration": 1,
+    "jumpSpeed": 6,
+    "brakeDeceleration": 20,
+    "rollingDeceleration": 0.6,
+    "lateralGrip": 30,
+    "attitudeStiffness": 35,
+    "attitudeDamping": 10,
+    "hoverHeight": 1.5,
+    "hoverStiffness": 20,
+    "hoverDamping": 8,
+    "waterLevel": 0,
+    "buoyancyStiffness": 30,
+    "buoyancyDamping": 6,
+    "aircraftLiftSpeed": 10,
+    "aircraftDrag": 0.08,
+    "controllerSchema": "tbn/schemas/actor.schema.json#/properties/physicsProfile/properties/controller"
   }
 }

@@ -19,4 +19,4 @@ module.exports = function meshFixture({ scale = 1, translation = [0, 0, 0], reve
     glb.writeUInt32LE(binary.length, offset); glb.writeUInt32LE(0x004e4942, offset + 4); binary.copy(glb, offset + 8);
     return { glb: glb.toString('base64'), metadata: { visualSize: { x: scale, y: scale, z: scale }, projectileOrigins: [] } };
 };
-module.exports.registration = (overrides = {}) => ({ name: 'Test cube', clientType: 'test-client', physicsProfile: { maxSpeed: 25 }, mesh: module.exports(), ...overrides });
+module.exports.registration = (overrides = {}) => ({ name: 'Test cube', clientType: 'test-client', physicsProfile: { maxSpeed: 25, controller: 'ground' }, mesh: module.exports(), ...overrides });

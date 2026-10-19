@@ -1,10 +1,12 @@
-const { test } = require('node:test');
+const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const { SessionManager } = require('../modules/sessions/manager');
 const { SessionData } = require('../modules/sessions/data-store');
-const { integrateActor, normalizeAction } = require('../modules/physics');
+const { initializePhysics, normalizeAction } = require('../modules/physics');
 const { createMap, sampleTerrainHeight } = require('../modules/terrain');
 const meshFixture = require('./mesh-fixture');
+const frame = require('./control-frame');
+before(() => initializePhysics());
 
 test('sessions own independent actors, meshes, terrain, bans, and physics instances', () => {
     const manager = new SessionManager();
@@ -14,10 +16,9 @@ test('sessions own independent actors, meshes, terrain, bans, and physics instan
     const actor = a.actors.create('player', 'address');
     a.actors.register(actor.id, meshFixture.registration());
     const initialX = actor.position.x;
-    a.actors.action(actor.id, { linear: { x: 1 }, angular: { z: 1 } });
-    a.tick(); a.snapshot();
+    a.actors.action(actor.id, frame({ move: { x: 1 } }));
+    for (let i = 0; i < 10; i++) a.tick(); a.snapshot();
     assert.ok(a.data.state.actors[0].position.x > initialX);
-    assert.equal(a.data.state.actors[0].rotationalRates.z, 0);
     assert.equal(b.data.actors.size, 0); assert.equal(b.data.meshes.size, 0);
     const terrainVersion = b.data.resources.get('terrain').version;
     a.resetTargets();
@@ -64,15 +65,8 @@ test('registration rejection is atomic and re-registration versions geometry', (
     manager.close();
 });
 
-test('physics clamps authoritative model positions and friction never reverses motion', () => {
-    const actor = { position: { x: 96.99, y: 0, z: 0 }, velocity: { x: 25, y: 0, z: 0 } };
-    const constrained = integrateActor(actor, {}, 1 / 30, { groundHeight: 0, bounds: { minX: -97, maxX: 97, minZ: -97, maxZ: 97 } });
-    assert.equal(constrained.position.x, 97); assert.equal(constrained.velocity.x, 0);
-    const still = integrateActor({ position: { y: 0 } }, { angular: { z: 0.1 } }, 1 / 30, { groundHeight: 0, angularFriction: 5 });
-    assert.equal(still.rotationalRates.z, 0);
-    const moving = integrateActor({ position: { y: 0 }, velocity: { x: 0.01 } }, {}, 1 / 30, { groundHeight: 0 });
-    assert.ok(moving.velocity.x >= -1e-12);
-    assert.deepEqual(normalizeAction({ angular: { y: Infinity } }).angular, { x: 0, y: 0, z: 0 });
+test('neutral internal frames contain every control without retaining prior acceleration', () => {
+    assert.deepEqual(normalizeAction(), { ...frame(), sequence: -1 });
 });
 
 test('terrain grids and height samples are stable and finite', () => {

@@ -1,67 +1,66 @@
-# TBN SDK Reference
+# Client integration recipe (protocol v2)
 
-## Script Inclusions (`index.html`)
-```html
-<script src="/socket.io/socket.io.js"></script>
-<script src="/tbn-sdk.js"></script>
-```
+Socket.IO is the supported transport. There is no bundled global `TbnSDK` implementation; older examples using `TbnSDK.connect()` were illustrative. Client agents should implement their own adapter using the events below. Read [physics-controls.md](physics-controls.md) and validate generated payloads against the shared schemas.
 
-## API Methods
+## Connect, register, and check compatibility
 
-### 1. Connection
-```javascript
-const game = await TbnSDK.connect({ localNodeUrl: 'http://localhost:3000' });
-console.log('Player ID:', game.myPlayerId);
-```
+Load Socket.IO from the local client server and the prepared registration package from your root client application. Register after every upstream connection, including reconnects. If writing a local relay, forward upstream `init`, `protocol_info`, registration/session results, state, map, manifests, geometry and rejection events to the browser. `init` is the upstream player ID, not the browser-local socket ID.
 
-### 2. Map Topology
-```javascript
-game.onMapData((map) => {
-    // map.bounds: { minX, maxX, minZ, maxZ }
-    // map.terrain: { type: "dted", columns, rows, origin, spacing, depthMap }
-    // map.walls, map.ramps, map.targets
+```js
+const socket = io('http://localhost:3000');
+let playerId, sequence = 0, protocolReady = false, registered = false;
+const neutral = () => ({ move: { x: 0, y: 0, z: 0 }, rotate: { x: 0, y: 0, z: 0 }, brake: 0, jump: false });
+let held = neutral();
+socket.on('protocol_info', info => {
+  protocolReady = info.protocolVersion === 2;
+  if (!protocolReady) showError('Client/server protocol mismatch; rebuild this client.');
+  // Render boat water at info.physics.waterLevel; retain session policy for UI.
+});
+socket.on('init', id => { playerId = id; sequence = 0; held = neutral(); });
+socket.on('registration_accepted', () => { registered = true; sequence = 0; held = neutral(); });
+socket.on('registration_rejected', error => { registered = false; showError(error.reason); });
+socket.on('request_rejected', error => showError(error.reason));
+socket.on('state', state => {
+  const own = state.actors.find(actor => actor.id === playerId);
+  if (own) sequence = Math.max(sequence, own.lastInputSequence + 1);
+});
+socket.on('server_status', status => {
+  if (!status.connected) { registered = false; held = neutral(); }
+  else socket.emit('register_actor', preparedActorPackage);
+});
+socket.on('disconnect', () => { protocolReady = false; registered = false; held = neutral(); });
+setInterval(() => {
+  if (socket.connected && protocolReady && registered) {
+    socket.emit('action', { protocolVersion: 2, sequence: sequence++, ...held });
+  }
+}, 1000 / 30);
+window.addEventListener('blur', () => {
+  held = neutral();
+  if (socket.connected && protocolReady && registered) socket.emit('action', { protocolVersion: 2, sequence: sequence++, ...held });
 });
 ```
 
-### 3. Register Actor
-Always send actor registration on each server connection, including reconnects, before joining a session. Follow [`tbn/schemas/actor.schema.json`](tbn/schemas/actor.schema.json) and its referenced [`tbn/schemas/mesh.schema.json`](tbn/schemas/mesh.schema.json). The reusable `ClientNode` accepts the prepared package as `options.actorRegistration`; it also retains browser `register_actor` packages received before connection and resends the latest package after reconnecting. Validate JSON against both schemas and validate binary GLB limits at build time.
+This is a recipe: implement `showError`, load `preparedActorPackage` from the build-time actor JSON, and map user input to `held` according to the selected controller. Also clear held state on hidden-page and pointer-lock loss. A generated relay must emit `server_status` on initial browser attachment and upstream reconnect. With a direct upstream connection, use `connect` to submit registration instead of `server_status`. Do not submit the package through both a relay's automatic registration and browser reconnect logic; pick one owner.
 
-Prepare the actor package with the agent at build time, before running the game or connecting. After player registration with the server, submit it before joining a game session. `base64Glb` must encode a version 2 GLB of at most 16 MiB decoded bytes and 5,000 triangles. Include weapon projectile origins in `meshMetadata.projectileOrigins` using body coordinates (+X forward, +Y left, +Z up). See `tbn/schemas/actor.schema.json`.
+If reusing the framework relay in a context where imports are allowed, it can own registration via `options.actorRegistration`; client-generation placement rules still prohibit importing `tbn/client-node.js` from the required root entry point. Implement the documented bridge in `client.js` for generated clients.
 
-```javascript
-game.actions.registerActor({
-    name: "PlayerVehicle",
-    clientType: "custom-client",
-    physicsProfile: { maxSpeed: 25 },
-    mesh: { glb: base64Glb, metadata: meshMetadata }
-});
+## State and assets
+
+```js
+socket.on('map_data', world => cacheWorldAndBuildTerrain(world));
+socket.on('mesh_manifest', entries => updateActorDescriptors(entries));
+socket.on('mesh_manifest_entry', actor => socket.emit('request_mesh', actor.id));
+socket.on('mesh_geometry', mesh => loadGlbFromBase64(mesh.glb, mesh.metadata));
+socket.on('mesh_manifest_removed', id => removeActor(id));
+socket.on('state', state => bufferSnapshotForInterpolation(state));
 ```
 
-### 4. Actor Tracking & State Updates (~15Hz)
-```javascript
-game.actors.onSpawn(actor => spawnMesh(actor));
-game.actors.onDespawn(actorId => removeMesh(actorId));
+Request meshes from initial manifest entries as well as new entry events. Cache world/geometry separately from moving state. State includes every actor (including this player), position/root velocity, body Euler XYZ attitude, body angular rates, grounded status and `lastInputSequence`, plus projectiles and transient hit events. Apply the body-to-world transform and quaternion interpolation from [physics-controls.md](physics-controls.md). Deduplicate hit effects by event ID. Fire inputs/projectile creation are not currently implemented.
 
-game.onStateUpdate((state) => {
-    // state.actors: [{ id, name, health, position, velocity, orientation: {x,y,z,order:'XYZ'} }]
-    // state.projectiles: [{ id, position, velocity }]
-    // state.hitEvents: [{ id, targetId, sourceId, damage, remainingHealth, hitLocation }]
-});
-```
+## Sessions and delivery receipts
 
-### 5. Combat Events
-```javascript
-game.events.onPlayerHit((evt) => {
-    // evt: { targetId, sourceId, damage, remainingHealth, hitLocation }
-});
-```
+Use `request_sessions` → `sessions_list`; send `join_session` with a session ID only after registration. Reset input sequence and interpolation caches on `init` after selection/transfer. On `session_rejected`, retain the existing session and display the reason. `request_world` refreshes static data; changing targets does not deform terrain.
 
-### 6. Send Acceleration Inputs
-Only the signals in `tbn/schemas/actions.schema.json` are supported. Vectors and components are optional; omitted parameters retain their previous value. Send explicit zeros to stop.
-`linear` is linear acceleration in g (1 g = 9.81 m/s²); `angular` is angular acceleration in rad/s² about the body axes through the center of mass. Linear limits are X [-3, 3] g, Y [-1, 1] g, Z [-5, 5] g; angular components remain [-1, 1] rad/s².
-```javascript
-game.actions.send({
-    linear: { x: 1.0, y: 0, z: 0 },   // +X forward; all three axes supported
-    angular: { x: 0, y: 0, z: -0.5 } // Yaw steering
-});
-```
+Optional delivery tracking uses `data_version` envelopes after payload events. Cache the payload before acknowledging `{sessionId, resource, version}` with `data_ack`. `lastInputSequence` is a separate physics acknowledgment, not a data-cache receipt. See [multiplayer-server.md](multiplayer-server.md).
+
+One upstream relay connection represents one player: give one active browser tab control ownership. Multiple independent tabs sending sequences for that same actor will conflict. A newly attached view should initialize from cached state acknowledgment or explicitly re-register before taking control; passive spectator views should not send actions.

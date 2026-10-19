@@ -30,6 +30,7 @@ function createGameServer(options = {}) {
         async start() {
             if (started) return runtime;
             try {
+                await Promise.all([...sessions.sessions.values()].map(session => session.physics.ready));
                 await new Promise((resolve, reject) => {
                     /** Reject startup on bind failure; the listening callback removes this temporary handler. */
                     const failed = error => reject(error);

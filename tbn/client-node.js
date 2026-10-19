@@ -1,3 +1,10 @@
+/**
+ * Bridge browser Socket.IO clients to the authoritative TBN server and cache session resources.
+ * Inputs: Constructor options, browser v2 frames/registrations, upstream discovery and server events.
+ * Outputs: HTTP assets, relayed authoritative events and local lifecycle events.
+ * Side effects: Binds HTTP/UDP during start, maintains caches, opens upstream sockets and resends registration.
+ * Coupling: actions schema drives diagnostics; server protocol owns validation/physics; no local simulation.
+ */
 const express = require('express');
 const os = require('os');
 const dgram = require('dgram');
@@ -28,7 +35,7 @@ class ClientNode extends EventEmitter {
 
         this.options = options;
         // Change these values in client.js or pass them to the constructor.
-        this.localPort = options.localPort || process.env.LOCAL_PORT || 3000;
+        this.localPort = options.localPort ?? process.env.LOCAL_PORT ?? 3000;
         this.gameServerPort = options.gameServerPort || 4000;
         this.udpDiscoveryPort = options.udpDiscoveryPort || 4001;
         this.explicitServerUrl = options.serverUrl || process.argv[2] || process.env.GAME_SERVER_URL;
@@ -48,6 +55,8 @@ class ClientNode extends EventEmitter {
         this.gameServerSocket = null;
         this.isConnectedToGameServer = false;
         this.currentServerUrl = null;
+        this.cachedRegistrationAccepted = null;
+        this.cachedProtocolInfo = null;
         this.cachedMapData = null;
         this.cachedActorsList = {};
         this.cachedMeshManifest = {};
@@ -77,7 +86,7 @@ class ClientNode extends EventEmitter {
             const allowedSignals = Object.keys(actionSchema.properties);
             details.signals = Object.fromEntries(allowedSignals.filter(name => data?.[name] !== undefined).map(name => [name, data[name]]));
             details.unsupportedSignals = Object.keys(data || {}).filter(name => !allowedSignals.includes(name));
-            details.omittedParameters = 'retain previous value; send explicit zeros to stop';
+            details.frameSemantics = 'v2 complete normalized control effort; missing fields rejected; stale input neutralizes';
         } else if (event === 'state') {
             const actors = Array.isArray(data?.actors) ? data.actors : [];
             const ownActor = actors.find(actor => actor.id === this.gameServerSocket?.id);
@@ -271,6 +280,7 @@ class ClientNode extends EventEmitter {
             this.emit('game:connect', socket);
         });
         socket.on('disconnect', (reason) => {
+            this.cachedRegistrationAccepted = null; this.cachedProtocolInfo = null;
             this.isConnectedToGameServer = false;
             console.log(`[LOCAL CLIENT NODE] Disconnected from Game Server (${this.currentServerUrl}). Retrying...`);
             this.ioLocal.emit('server_status', { connected: false, serverUrl: this.currentServerUrl });
@@ -286,7 +296,11 @@ class ClientNode extends EventEmitter {
         // These are the standard game protocol events. Keep them when
         // overriding this method unless the custom client intentionally uses a
         // different protocol.
-        this.relayFromGame(socket, 'init');
+        this.relayFromGame(socket, 'protocol_info', data => { this.cachedProtocolInfo = data; });
+        this.relayFromGame(socket, 'init', () => {
+            this.cachedMapData = null; this.cachedActorsList = {}; this.cachedMeshManifest = {}; this.cachedMeshes = {}; this.currentGameState = {};
+        });
+        for (const event of ['session_selected', 'session_joined', 'session_rejected', 'session_closed', 'sessions_list', 'request_rejected', 'data_version', 'data_manifest', 'data_removed']) this.relayFromGame(socket, event);
         this.relayFromGame(socket, 'map_data', data => { this.cachedMapData = data; });
         this.relayFromGame(socket, 'mesh_manifest', data => {
             this.cachedMeshManifest = data;
@@ -310,7 +324,7 @@ class ClientNode extends EventEmitter {
         });
         this.relayFromGame(socket, 'mesh_geometry', data => { this.cachedMeshes[data.id] = data; });
         this.relayFromGame(socket, 'registration_rejected');
-        this.relayFromGame(socket, 'registration_accepted');
+        this.relayFromGame(socket, 'registration_accepted', data => { this.cachedRegistrationAccepted = data; });
         this.relayFromGame(socket, 'state', data => { this.currentGameState = data; });
         this.relayFromGame(socket, 'player_hit');
     }
@@ -365,7 +379,9 @@ class ClientNode extends EventEmitter {
             }
         });
         browserSocket.emit('server_status', { connected: this.isConnectedToGameServer, serverUrl: this.currentServerUrl, playerName: this.playerName });
+        if (this.cachedProtocolInfo) browserSocket.emit('protocol_info', this.cachedProtocolInfo);
         if (this.gameServerSocket && this.gameServerSocket.id) browserSocket.emit('init', this.gameServerSocket.id);
+        if (this.cachedRegistrationAccepted) browserSocket.emit('registration_accepted', this.cachedRegistrationAccepted);
         if (this.cachedMapData) browserSocket.emit('map_data', this.cachedMapData);
         if (Object.keys(this.cachedMeshManifest).length) browserSocket.emit('mesh_manifest', this.cachedMeshManifest);
         for (const mesh of Object.values(this.cachedMeshes)) browserSocket.emit('mesh_geometry', mesh);
@@ -377,6 +393,7 @@ class ClientNode extends EventEmitter {
         this.relayToGame(browserSocket, 'action');
         this.relayToGame(browserSocket, 'request_mesh');
         this.relayToGame(browserSocket, 'request_actors');
+        for (const event of ['join_session', 'request_sessions', 'request_map', 'request_world', 'request_data', 'request_data_manifest', 'data_ack']) this.relayToGame(browserSocket, event);
         this.emit('browser:connect', browserSocket);
     }
 
@@ -456,6 +473,7 @@ class ClientNode extends EventEmitter {
             this.http.once('error', onError);
             this.http.listen(this.localPort, '0.0.0.0', () => {
                 this.http.off('error', onError);
+                this.localPort = this.http.address().port;
                 console.log(`[LOCAL CLIENT NODE] Local Web Server listening on http://localhost:${this.localPort}`);
                 this.emit('listening', this.localPort);
                 resolve();

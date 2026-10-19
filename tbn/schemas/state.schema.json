@@ -84,7 +84,10 @@
         "health",
         "position",
         "orientation",
-        "velocity"
+        "velocity",
+        "grounded",
+        "lastInputSequence",
+        "rotationalRates"
       ],
       "properties": {
         "id": {
@@ -108,6 +111,20 @@
         "velocity": {
           "$ref": "#/definitions/vector3",
           "description": "World-space velocity in meters per second."
+        },
+        "grounded": {
+          "type": "boolean",
+          "description": "Actual terrain support; false during jump and separating bounce. Water/hover support is not ground contact."
+        },
+        "lastInputSequence": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 9007199254740991,
+          "description": "Latest control frame consumed by physics; -1 before input. Receipt is not a promise of requested motion."
+        },
+        "rotationalRates": {
+          "$ref": "#/definitions/vector3",
+          "description": "Body-local angular velocity in rad/s; not Euler angle derivatives."
         }
       },
       "description": "Public state for an actor, including the receiving player. Additional public fields may be supplied; never include private actor data."

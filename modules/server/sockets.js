@@ -5,6 +5,7 @@
  * Side effects: Installs/removes handlers, changes room membership and mutates session state through managers.
  * Coupling: ActorManager handles actors; DataDistribution handles versioned delivery; sessions own physics.
  */
+const { invariants, protocolVersion } = require('../contracts');
 const { DataDistribution } = require('../sessions/distribution');
 
 class ClientSockets {
@@ -78,6 +79,7 @@ class ClientSockets {
         if (!client.admin && client.registration) session.actors.attach(socket.id, client.address, client.registration);
         session.snapshot();
         socket.emit(client.admin || client.registration ? 'session_joined' : 'session_selected', { sessionId: session.id, name: session.name });
+        socket.emit('protocol_info', { protocolVersion, inputTimeoutSeconds: invariants.input.inputTimeoutSeconds, physics: { ...invariants.physics, ...session.physics.environment, terrain: undefined, groundHeight: undefined, bounds: undefined } });
         socket.emit('init', socket.id);
         const distribution = this.bindings.get(session.id).distribution;
         distribution.flush(socket); distribution.manifest(socket);

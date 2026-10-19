@@ -2,14 +2,14 @@
 
 ## Core Principle
 **"The server owns truth. The client owns presentation."**
-- Server simulates authoritative 30Hz physics, movement, collision, terrain clamping, health, and combat.
+- Server simulates authoritative 30Hz physics, movement, collision, terrain contact, and actor state.
 - Client reads server state and renders presentation (3D/2D/ASCII), HUD, sound, and user controls.
-- Browser action frames follow [`tbn/schemas/actions.schema.json`](tbn/schemas/actions.schema.json): `linear` in g and `angular` in rad/s², with optional components; linear X/Y/Z limits are respectively ±3/±1/±5 g, while angular components are ±1 rad/s². Omitted parameters retain their previous value. The relay forwards these signals to the authoritative server.
+- Browser action frames follow protocol v2 in `tbn/schemas/actions.schema.json`: complete normalized `move`/`rotate` effort, brake, jump, version and sequence. The relay forwards frames without interpreting physics. Read [physics-controls.md](physics-controls.md).
 
 ## 3-Tier Topology
 ```text
 ┌────────────────────────────────┐
-│ Authoritative Host (Port 4000) │  game-server.js: 30Hz physics, DTED terrain, combat
+│ Authoritative Host (Port 4000) │  game-server.js: 30Hz sessions, Rapier, DTED terrain
 └──────────────┬─────────────────┘
                │ Socket.IO / UDP (Port 4001)
 ┌──────────────▼─────────────────┐
@@ -20,3 +20,5 @@
 │ Browser Client View            │  index.html: TbnSDK, rendering, HUD, audio, input
 └────────────────────────────────┘
 ```
+
+Each session owns a distinct Rapier world. Actor controllers translate intent into forces/torques; Rapier owns collision response. The server announces protocol v2 and physics policy through `protocol_info`. A local relay must forward that announcement, registration/action rejection reasons and input acknowledgments in state.

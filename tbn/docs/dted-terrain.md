@@ -31,26 +31,27 @@ const y = sample * terrain.elevationScale;
 
 ## Mesh topology
 
-Construct rows * columns vertices. Each cell between adjacent posts becomes two triangles; there are (rows - 1) * (columns - 1) cells. Rendering may use chunks or lower detail while retaining the received sampling contract.
+The transmitted grid remains half-open. For collision/rendering, construct (rows+1) × (columns+1) vertices: append a boundary column at `origin.x + width` and a boundary row at `origin.z + depth`, copying the last available heights. Interior vertex coordinates are `origin + index * spacing`; clamp boundary positions to the exact width/depth. Each of rows × columns cells has corners a=(col,row), b=(col+1,row), c=(col,row+1), d=(col+1,row+1). Use upward triangles **(a,c,b)** and **(b,c,d)**, splitting along the b-to-c diagonal. Omit a triangle if any of its posts is noData; this leaves a physical/rendered hole. The server allocates bounded collider chunks, but chunking must not change the diagonal or heights.
 
-## Bilinear height sampling
+Bilinear interpolation generally does not lie on these triangles. For physical placement previews use the triangular interpolation below. Snapshot actor Y/attitude is always authoritative. You may use lower-detail distant rendering, but keep the collision-resolution mesh near actors. Terrain is generated once per new session and immutable for its lifetime; target resets do not deform it.
 
-The result is in meters. This example reports missing data rather than silently inventing terrain heights.
+## Triangular height sampling
+
+The result is world Y in meters, or NaN for an unusable triangle. Boundary cells have duplicated heights, so interpolation extends the final samples to the map edge.
 
 ```javascript
-function sampleTerrainHeight(x, z, terrain) {
-    const gx = Math.max(0, Math.min(terrain.columns - 1, (x - terrain.origin.x) / terrain.spacing.x));
-    const gz = Math.max(0, Math.min(terrain.rows - 1, (z - terrain.origin.z) / terrain.spacing.z));
-    const x0 = Math.floor(gx), z0 = Math.floor(gz);
-    const x1 = Math.min(x0 + 1, terrain.columns - 1), z1 = Math.min(z0 + 1, terrain.rows - 1);
-    const tx = gx - x0, tz = gz - z0;
+function sampleTerrainHeight(x, z, t) {
+    const gx = Math.max(0, Math.min(t.columns, (x - t.origin.x) / t.spacing.x));
+    const gz = Math.max(0, Math.min(t.rows, (z - t.origin.z) / t.spacing.z));
+    const col = Math.min(t.columns - 1, Math.floor(gx));
+    const row = Math.min(t.rows - 1, Math.floor(gz));
+    const tx = Math.min(1, gx - col), tz = Math.min(1, gz - row);
     const at = (c, r) => {
-        const value = terrain.depthMap[r * terrain.columns + c];
-        if (value === terrain.noDataValue) throw new Error('Missing terrain elevation');
-        return value * terrain.elevationScale;
+        const v = t.depthMap[Math.min(r, t.rows - 1) * t.columns + Math.min(c, t.columns - 1)];
+        return v === t.noDataValue ? NaN : v * t.elevationScale;
     };
-    const s = at(x0, z0) * (1 - tx) + at(x1, z0) * tx;
-    const n = at(x0, z1) * (1 - tx) + at(x1, z1) * tx;
-    return s * (1 - tz) + n * tz;
+    const a = at(col, row), b = at(col + 1, row), c = at(col, row + 1), d = at(col + 1, row + 1);
+    return tx + tz <= 1 ? a * (1 - tx - tz) + b * tx + c * tz :
+        b * (1 - tz) + c * (1 - tx) + d * (tx + tz - 1);
 }
 ```

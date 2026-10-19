@@ -3,9 +3,10 @@
  * Inputs: vertex/index geometry, visual bounds, enclosed volume and uniform density.
  * Outputs: collision mesh, approximate center of mass, mass and box inertia.
  * Side effects: freezes newly constructed shape data; does not modify source geometry.
- * Coupling: receives GLB validation results; consumed by contacts and integration.
+ * Coupling: receives GLB validation results; consumed by spawn placement and the Rapier adapter.
  */
 const { add, scale, cross, normalize } = require('./vector');
+const { invariants } = require('../contracts');
 const { deepFreeze } = require('../shared/immutable');
 
 /** Cache parallel surface probes once; runtime rotates only downward-facing groups. */
@@ -26,7 +27,7 @@ function contactSurfaces(vertices, indices) {
 }
 
 /** Approximate mass center by the visual-box centroid; mass uses actual mesh volume. */
-function createSolidBody(info, density = 1) {
+function createSolidBody(info, density = invariants.physics.density) {
     if (!Number.isFinite(density) || density <= 0) throw new Error('Density must be positive');
     const geometry = info.geometry || info;
     const vertices = structuredClone(geometry.vertices), indices = [...geometry.indices];

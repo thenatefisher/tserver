@@ -3,8 +3,9 @@
  * Inputs: Numeric scalars, vector-like values and magnitude limits.
  * Outputs: New vectors, projections, magnitudes and scalar products.
  * Side effects: None; input vectors remain unchanged.
- * Coupling: Shared by forces, integration, contact frames, collision response and terrain normals.
+ * Coupling: Shared by Rapier controllers, state projection, spawn placement and terrain normals.
  */
+/** Convert a scalar to a finite number, substituting fallback without changing the input. */
 function number(value, fallback = 0) {
     const result = Number(value);
     return Number.isFinite(result) ? result : fallback;

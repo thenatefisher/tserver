@@ -118,5 +118,5 @@
       }
     }
   },
-  "description": "Actor mesh in a 1000 m cube world. All transformed GLB vertices must fit the ground-aligned 3 m actor-local cube: X/Y [-1.5, 1.5], Z [0, 3]. Validate decoded GLB geometry separately; JSON Schema validates declared metadata only. The server enforces a minimum mesh volume of 1 cubic meter and a fixed 2 m cube hitbox centered at the actor origin (X/Y/Z [-1, 1]). These are server-enforced geometry rules, not client-selectable metadata. JSON Schema cannot enforce volume computed from binary GLB geometry."
+  "description": "Actor mesh in a 1000 m cube world. All transformed GLB vertices must fit the ground-aligned 3 m actor-local cube: X/Y [-1.5, 1.5], Z [0, 3]. Validate decoded GLB geometry separately; JSON Schema validates declared metadata only. The server enforces a minimum mesh volume of 1 cubic meter and a fixed 2 m cube hitbox centered at the actor origin (X/Y/Z [-1, 1]). These are server-enforced geometry rules, not client-selectable metadata. JSON Schema cannot enforce volume computed from binary GLB geometry. Rapier uses convex hulls for convex actors and bounded convex decomposition for concave actors. The fixed hitbox is metadata, not the rigid-body collider. Uniform-density mass uses enclosed volume; COM uses visual-box centroid; animated visual deformation does not change collision geometry."
 }
