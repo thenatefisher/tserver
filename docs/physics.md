@@ -38,7 +38,7 @@ Hover mode has all-axis thrust, upright stabilization and terrain-relative COM h
 
 ## Terrain
 
-Every new session generates a random-seeded terrain unless a map/seed is supplied. The cloned DTED grid is deeply frozen and cannot be replaced. Static triangle colliders are generated in 64-cell chunks. They use triangles (a,c,b), (b,c,d), with the last sample heights extended to the far boundary. Triangles touching missing samples are omitted, leaving holes. TerrainModel height queries use that same triangle diagonal; the standalone terrain module's historical bilinear helper is retained only for nonphysical convenience/target generation. Spawn placement uses TerrainModel, not that bilinear helper.
+Every new session generates a random-seeded terrain unless a map/seed is supplied. Each DTED snapshot is deeply frozen; only the explicit admin flatten operation replaces it. Static triangle colliders are generated in 64-cell chunks. They use triangles (a,c,b), (b,c,d), with the last sample heights extended to the far boundary. Triangles touching missing samples are omitted, leaving holes. TerrainModel height queries use that same triangle diagonal; the standalone terrain module's historical bilinear helper is retained only for nonphysical convenience/target generation. Spawn placement uses TerrainModel, not that bilinear helper.
 
 Practice target resets version the world wrapper but retain identical terrain samples and collider instances. Actor motion, collision geometry and resource ownership are independent across sessions.
 
@@ -55,3 +55,7 @@ Fine concavities can be approximated by bounded convex decomposition; animated G
 `npm test` exercises real WASM worlds: schema/sequence rejection, control timeout, body basis roundtrips, mass/COM, supported pitch suppression, steering and traction, hill alignment, tilted landing recovery, jump edges, bounce/settling, airborne COM, actor momentum transfer, controller modes and isolated/disposable terrain worlds. Socket tests cover protocol announcement, invalid v1 actions, accepted/acknowledged v2 input, registration, transfer, resources, moderation and clean startup/shutdown.
 
 When distributing the server or bundling Rapier, preserve the dependency's Apache-2.0 license and applicable notices. See the package LICENSE; no Rapier source files are modified here.
+
+## Admin terrain flattening
+
+The dashboard **Flatten terrain** button sends admin-only `admin_flatten_terrain` for the selected session. It replaces all elevations with world Y=0 (including former no-data holes), rebuilds Rapier terrain colliders, settles actor roots onto the plane, preserves X/Z and heading, clears motion and held controls, and moves practice targets to Y=2. Actor registrations, input sequence counters and connections remain intact. New input frames resume control normally. The server publishes a new version of `map_data` and authoritative state, then `terrain_flattened` with `{sessionId,elevation:0,version}`. Other sessions are unchanged. Clients must rebuild terrain from replacement map data and discard interpolation across the actor repositioning; do not reset input sequence counters. Target resets alone still leave terrain unchanged.

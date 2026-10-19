@@ -183,3 +183,18 @@ test('framework relay forwards v2 announcements, registration, controls and reje
     const rejection = event(browser, 'request_rejected'); browser.emit('action', frame({ sequence: 16 }));
     assert.match((await rejection).reason, /sequence/);
 });
+
+test('admin flatten publishes the replacement map/state and rejects player requests', { timeout: 10000 }, async t => {
+    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger, sessions: [{ id: 'default' }, { id: 'second' }] });
+    t.after(() => server.close()); await server.start();
+    const url = `http://127.0.0.1:${server.http.address().port}`;
+    assert.match(await (await fetch(url + '/admin')).text(), /id="flatten-terrain"/);
+    const player = await connect(t, url), admin = await connect(t, url, { role: 'admin' });
+    const denied = event(player, 'request_rejected'); player.emit('admin_flatten_terrain'); assert.match((await denied).reason, /Admin/);
+    const other = server.sessions.get('second'), otherTerrain = other.terrain;
+    const update = event(player, 'map_data', m => m.terrain.depthMap.every(v => v === 0));
+    const receipt = event(player, 'data_version', v => v.resource === 'terrain' && v.version === 2);
+    const done = event(admin, 'terrain_flattened'); admin.emit('admin_flatten_terrain');
+    assert.equal((await done).sessionId, 'default'); await update; await receipt;
+    assert.equal(other.terrain, otherTerrain); assert.equal(other.data.resources.get('terrain').version, 1);
+});

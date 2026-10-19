@@ -7,7 +7,7 @@
  */
 const { EventEmitter } = require('node:events');
 const { SessionData } = require('./data-store');
-const { PhysicsModel } = require('../physics');
+const { PhysicsModel, normalizeAction } = require('../physics');
 const { TerrainModel } = require('../terrain/model');
 const { ActorManager } = require('../actors/manager');
 const { validate, invariants } = require('../contracts');
@@ -20,7 +20,7 @@ class GameSession extends EventEmitter {
         if (!Number.isFinite(tickRate) || tickRate <= 0) throw new Error('Invalid tick rate');
         this.id = id; this.name = name; this.tickRate = tickRate; this.startedAt = Date.now();
         validateMap(map);
-        Object.defineProperty(this, 'terrain', { value: new TerrainModel(map.terrain), enumerable: true });
+        Object.defineProperty(this, 'terrain', { value: new TerrainModel(map.terrain), enumerable: true, configurable: true });
         this.data = new SessionData(id, { ...structuredClone(map), terrain: this.terrain.grid });
         this.hitEvents = [];
         this.physics = physicsFactory({
@@ -59,6 +59,27 @@ class GameSession extends EventEmitter {
         resetTargets(this.data.map);
         this.data.set('terrain', this.data.map);
         this.emit('data_changed');
+    }
+    /** Flatten this session to world Y=0, republish terrain/state and settle actors without reconnecting clients. */
+    flattenTerrain() {
+        const map = structuredClone(this.data.map);
+        map.terrain.depthMap.fill(0);
+        delete map.terrain.noDataValue; // Flattening fills former holes with valid zero-elevation terrain.
+        for (const target of map.targets || []) target.y = 2;
+        validateMap(map);
+        const terrain = new TerrainModel(map.terrain);
+        const sequences = Object.fromEntries([...this.data.actors].map(([id, actor]) => [id, actor.action.sequence]));
+        const state = this.physics.flattenTerrain(terrain, sequences);
+        Object.defineProperty(this, 'terrain', { value: terrain });
+        this.actors.terrain = terrain;
+        map.terrain = terrain.grid;
+        const version = this.data.replaceTerrain(map);
+        for (const moved of state.actors) {
+            const actor = this.data.actors.get(moved.id);
+            Object.assign(actor, moved, { action: normalizeAction({ sequence: sequences[moved.id] }) });
+        }
+        this.snapshot(); this.emit('data_changed');
+        return { sessionId: this.id, elevation: 0, version };
     }
     /** Validate and copy a hit into the pending transient event queue. */
     queueHit(event) { validate('state', { actors: [], projectiles: [], hitEvents: [event] }); this.hitEvents.push(structuredClone(event)); }

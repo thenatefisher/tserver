@@ -114,3 +114,7 @@ Every session selection/transfer sends `protocol_info` with `{protocolVersion:2,
 Resources are `terrain` (world wrapper), `registrations`, `state`, and `mesh:<actorId>`. Resource payload events are followed by `data_version` envelopes. Ack after caching. Opt in to unacknowledged-resource retries using upstream handshake `auth.sync:true`. Geometry is requested on demand; removal emits `data_removed` tombstones and manifest removal. A new session has independent receipt versions and terrain; discard old cache associations. Sessions isolate actors and simulation. A reconnect requires actor registration again.
 
 State actors now include `grounded` and `lastInputSequence` along with body angular rates. The simulation acknowledgment reflects a consumed control frame; old/duplicate sequences are rejected without extending the 250 ms lifetime. Read [physics-controls.md](physics-controls.md) for controller behavior and [tbn-sdk.md](tbn-sdk.md) for an implementation recipe.
+
+## Admin flatten event
+
+Admin observers may send `admin_flatten_terrain` (no payload) to flatten their selected session to Y=0. Player requests are rejected. Updated `map_data` and state precede `terrain_flattened` `{sessionId,elevation:0,version}` for all session members. Actors are settled with zero velocity; heading/X/Z, registrations and sequence counters persist. Rebuild client terrain caches and reset interpolation on this notice. Other sessions are unchanged.

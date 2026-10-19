@@ -2,7 +2,7 @@
  * Own one session data catalog and per-client delivery/receipt manifests.
  * Inputs: World wrapper, actor registrations/GLBs, snapshots and receipt acknowledgments.
  * Outputs: Versioned resources, pending-resource lists and client synchronization manifests.
- * Side effects: Mutates session Maps, freezes terrain in place and rejects terrain replacement.
+ * Side effects: Mutates session Maps, freezes terrain snapshots; ordinary writes reject terrain replacement.
  * Coupling: Distribution reads resources; actors publish registrations; sessions publish state and target updates.
  */
 const { deepFreeze } = require('../shared/immutable');
@@ -26,6 +26,13 @@ class SessionData {
         if (key === 'terrain') Object.defineProperty(value, 'terrain', { value: deepFreeze(value.terrain), enumerable: true, writable: false, configurable: false });
         const version = (this.resources.get(key)?.version || 0) + 1;
         this.resources.set(key, { version, value, deleted });
+        return version;
+    }
+    /** Publish an explicit admin terrain replacement; caller must validate and replace physics first. */
+    replaceTerrain(map) {
+        Object.defineProperty(map, 'terrain', { value: deepFreeze(map.terrain), enumerable: true, writable: false, configurable: false });
+        const version = this.resources.get('terrain').version + 1;
+        this.resources.set('terrain', { version, value: map, deleted: false });
         return version;
     }
     /** Return the live world wrapper; its grid is immutable but target data may be replaced. */

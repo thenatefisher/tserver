@@ -171,6 +171,11 @@ class ClientSockets {
         });
         guard('admin_unban_actor', address => { requireAdmin(); client.session.actors.unban(address); });
         guard('admin_reset_targets', () => { requireAdmin(); client.session.resetTargets(); });
+        guard('admin_flatten_terrain', () => {
+            requireAdmin();
+            const result = client.session.flattenTerrain();
+            this.broadcast(client.session, 'terrain_flattened', result);
+        });
         socket.on('disconnect', reason => {
             this.logger.info('[GAME SERVER] Disconnected:', socket.id);
             this.logger.debug('socket.disconnect', { id: socket.id, reason });

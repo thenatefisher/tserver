@@ -300,7 +300,7 @@ class ClientNode extends EventEmitter {
         this.relayFromGame(socket, 'init', () => {
             this.cachedMapData = null; this.cachedActorsList = {}; this.cachedMeshManifest = {}; this.cachedMeshes = {}; this.currentGameState = {};
         });
-        for (const event of ['session_selected', 'session_joined', 'session_rejected', 'session_closed', 'sessions_list', 'request_rejected', 'data_version', 'data_manifest', 'data_removed']) this.relayFromGame(socket, event);
+        for (const event of ['session_selected', 'session_joined', 'session_rejected', 'session_closed', 'sessions_list', 'request_rejected', 'data_version', 'data_manifest', 'data_removed', 'terrain_flattened']) this.relayFromGame(socket, event);
         this.relayFromGame(socket, 'map_data', data => { this.cachedMapData = data; });
         this.relayFromGame(socket, 'mesh_manifest', data => {
             this.cachedMeshManifest = data;

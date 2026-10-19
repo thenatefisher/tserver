@@ -33,7 +33,7 @@ const y = sample * terrain.elevationScale;
 
 The transmitted grid remains half-open. For collision/rendering, construct (rows+1) × (columns+1) vertices: append a boundary column at `origin.x + width` and a boundary row at `origin.z + depth`, copying the last available heights. Interior vertex coordinates are `origin + index * spacing`; clamp boundary positions to the exact width/depth. Each of rows × columns cells has corners a=(col,row), b=(col+1,row), c=(col,row+1), d=(col+1,row+1). Use upward triangles **(a,c,b)** and **(b,c,d)**, splitting along the b-to-c diagonal. Omit a triangle if any of its posts is noData; this leaves a physical/rendered hole. The server allocates bounded collider chunks, but chunking must not change the diagonal or heights.
 
-Bilinear interpolation generally does not lie on these triangles. For physical placement previews use the triangular interpolation below. Snapshot actor Y/attitude is always authoritative. You may use lower-detail distant rendering, but keep the collision-resolution mesh near actors. Terrain is generated once per new session and immutable for its lifetime; target resets do not deform it.
+Bilinear interpolation generally does not lie on these triangles. For physical placement previews use the triangular interpolation below. Snapshot actor Y/attitude is always authoritative. You may use lower-detail distant rendering, but keep the collision-resolution mesh near actors. Terrain is generated once per new session and remains fixed unless an admin explicitly flattens it; target resets do not deform it.
 
 ## Triangular height sampling
 
@@ -55,3 +55,7 @@ function sampleTerrainHeight(x, z, t) {
         b * (1 - tz) + c * (1 - tx) + d * (tx + tz - 1);
 }
 ```
+
+## Admin terrain flattening
+
+The dashboard **Flatten terrain** button sends admin-only `admin_flatten_terrain` for the selected session. It replaces all elevations with world Y=0 (including former no-data holes), rebuilds Rapier terrain colliders, settles actor roots onto the plane, preserves X/Z and heading, clears motion and held controls, and moves practice targets to Y=2. Actor registrations, input sequence counters and connections remain intact. New input frames resume control normally. The server publishes a new version of `map_data` and authoritative state, then `terrain_flattened` with `{sessionId,elevation:0,version}`. Other sessions are unchanged. Clients must rebuild terrain from replacement map data and discard interpolation across the actor repositioning; do not reset input sequence counters. Target resets alone still leave terrain unchanged.

@@ -134,6 +134,27 @@ class PhysicsModel {
         if (record) this.world.removeRigidBody(record.rb);
         this.records.delete(id); this.state.actors = this.state.actors.filter(actor => actor.id !== id);
     }
+    /** Swap static terrain, settle actor roots onto a flat plane and clear motion/input without resetting sequences. */
+    flattenTerrain(terrain, sequences = {}) {
+        if (!this.world || this.closed) throw new Error('Physics is not ready');
+        const handles = createTerrainColliders(this.world, terrain, this.environment);
+        // Build replacements before removing old colliders; all operations run within one server turn.
+        for (const handle of this.terrainHandles) this.world.removeCollider(this.world.getCollider(handle), false);
+        this.terrainHandles = handles; this.environment.terrain = terrain;
+        for (const record of this.records.values()) {
+            const { actor, rb } = record, forward = rotateVector({ x: 1, y: 0, z: 0 }, rb.rotation());
+            const orientation = { x: 0, y: 0, z: Math.atan2(-forward.z, forward.x), order: 'XYZ' };
+            rb.setRotation(worldQuaternion(orientation), true);
+            const position = { ...rb.translation() }; position.y = terrain.heightAt(position.x, position.z);
+            rb.setTranslation(position, true); rb.setLinvel({ x: 0, y: 0, z: 0 }, true); rb.setAngvel({ x: 0, y: 0, z: 0 }, true);
+            rb.resetForces(true); rb.resetTorques(true);
+            record.sequence = Math.max(record.sequence, sequences[actor.id] ?? -1);
+            record.frame = normalizeAction(); record.receivedAt = -Infinity; record.jumpHeld = false;
+            Object.assign(actor, { position, orientation, velocity: { x: 0, y: 0, z: 0 }, centerVelocity: { x: 0, y: 0, z: 0 },
+                rotationalRates: { x: 0, y: 0, z: 0 }, grounded: false, lastInputSequence: record.sequence });
+        }
+        return this.getState();
+    }
     /** Return copies, keeping WASM objects and control receipt clocks private. */
     getState() { return cloneState(this.state); }
     /** Free all session-owned WASM allocations; safe before ready and on repeated calls. */

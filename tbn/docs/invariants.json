@@ -114,7 +114,8 @@
       "rows": 4000,
       "sampleCount": 16000000
     },
-    "collisionTopology": "triangles (a,c,b) and (b,c,d); last row/column extended to far boundary"
+    "collisionTopology": "triangles (a,c,b) and (b,c,d); last row/column extended to far boundary",
+    "replacementPolicy": "fixedDuringGameplay; explicitAdminFlattenReplacesSnapshotAndColliders"
   },
   "input": {
     "actionSchema": "tbn/schemas/actions.schema.json",
@@ -182,7 +183,8 @@
     },
     "delivery": [
       "onConnection",
-      "onRequest"
+      "onRequest",
+      "onAdminTerrainFlatten"
     ]
   },
   "gameState": {

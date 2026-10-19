@@ -104,6 +104,7 @@ socket.on('sessions_list', sessions => {
     }));
 });
 socket.on('session_joined', session => {
+    $('flatten-terrain').disabled = false; $('flatten-terrain').textContent = 'Flatten terrain';
     clients = []; manifest = {}; selectedId = null; state = { actors: [] };
     renderClients(); clearMesh('Choose View beside a registered mesh.');
     $('selected').textContent = `Session: ${session.name}`;
@@ -115,6 +116,7 @@ socket.on('connect', () => {
     log('Dashboard connected'); socket.emit('request_sessions');
 });
 socket.on('disconnect', reason => {
+    $('flatten-terrain').disabled = true;
     $('status').textContent = 'Disconnected · reconnecting'; $('status').style.color = '#fbbf24';
     log(`Disconnected: ${reason}`);
     clients = []; manifest = {}; selectedId = null; state = { actors: [] };
@@ -147,6 +149,21 @@ socket.on('server_metrics', metrics => {
 socket.on('map_data', data => { map = data; });
 socket.on('state', data => { state = data; });
 $('reset-targets').addEventListener('click', () => { socket.emit('admin_reset_targets'); log('Practice targets reset'); });
+
+$('flatten-terrain').addEventListener('click', () => {
+    $('flatten-terrain').disabled = true; $('flatten-terrain').textContent = 'Flattening…';
+    socket.emit('admin_flatten_terrain');
+});
+socket.on('terrain_flattened', result => {
+    $('flatten-terrain').disabled = false; $('flatten-terrain').textContent = 'Flatten terrain';
+    log(`Terrain flattened to Y=${result.elevation} m; actors settled (world version ${result.version})`);
+});
+socket.on('request_rejected', error => {
+    log(error.reason);
+    if (error.event === 'admin_flatten_terrain') {
+        $('flatten-terrain').disabled = !socket.connected; $('flatten-terrain').textContent = 'Flatten terrain';
+    }
+});
 
 /** Load local Three.js modules, create GPU/resize/animation resources and return the GLB loader. */
 async function setupViewer() {

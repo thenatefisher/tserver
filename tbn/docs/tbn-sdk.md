@@ -64,3 +64,5 @@ Use `request_sessions` → `sessions_list`; send `join_session` with a session I
 Optional delivery tracking uses `data_version` envelopes after payload events. Cache the payload before acknowledging `{sessionId, resource, version}` with `data_ack`. `lastInputSequence` is a separate physics acknowledgment, not a data-cache receipt. See [multiplayer-server.md](multiplayer-server.md).
 
 One upstream relay connection represents one player: give one active browser tab control ownership. Multiple independent tabs sending sequences for that same actor will conflict. A newly attached view should initialize from cached state acknowledgment or explicitly re-register before taking control; passive spectator views should not send actions.
+
+Handle every `map_data` as a replacement, including admin flatten updates. Dispose the old rendered terrain and rebuild from the new grid. On `terrain_flattened`, clear pose interpolation buffers without resetting input sequences.

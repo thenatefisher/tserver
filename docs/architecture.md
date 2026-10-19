@@ -128,3 +128,7 @@ npm test
 Debug logs cover startup, HTTP requests, received socket events, connection diagnostics and discovery. They omit simulation-tick and socket-send logs as requested.
 
 Tests validate schema acceptance/rejection, complete normalized inputs, sequence lifetime, slope/landing/bounce behavior, axes, terrain encoding, transformed GLB geometry, physics and session isolation, registration atomicity, data receipts and invalidation, HTTP/UDP discovery, session switching, moderation and shutdown. The historical Word document in this directory describes the earlier checkout; this Markdown reference documents the current refactor.
+
+## Admin terrain flattening
+
+The dashboard **Flatten terrain** button sends admin-only `admin_flatten_terrain` for the selected session. It replaces all elevations with world Y=0 (including former no-data holes), rebuilds Rapier terrain colliders, settles actor roots onto the plane, preserves X/Z and heading, clears motion and held controls, and moves practice targets to Y=2. Actor registrations, input sequence counters and connections remain intact. New input frames resume control normally. The server publishes a new version of `map_data` and authoritative state, then `terrain_flattened` with `{sessionId,elevation:0,version}`. Other sessions are unchanged. Clients must rebuild terrain from replacement map data and discard interpolation across the actor repositioning; do not reset input sequence counters. Target resets alone still leave terrain unchanged.

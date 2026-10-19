@@ -59,7 +59,7 @@ Rapier handles gravity, rigid-body collisions, rotational inertia, normal impuls
 
 All actor GLBs are validated closed solids. Uniform session density times original enclosed volume gives mass; center of mass is the visual-box centroid. Convex actors use their convex hull; concave actors use bounded convex decomposition (up to 16 parts). Fine recesses may be approximated. Box inertia is an approximation. Animated/deforming visuals do not alter collision geometry. The fixed 2 m hitbox is a gameplay metadata convention, not the rigid-body collider.
 
-Terrain collision and render topology must agree: see `dted-terrain.md`. Terrain remains unchanged for the session. Request another session for different terrain.
+Terrain collision and render topology must agree: see `dted-terrain.md`. Terrain remains unchanged during ordinary gameplay. The admin can explicitly flatten the selected session; clients must replace terrain meshes/collision caches on each new `map_data` event.
 
 ## Render authoritative state intuitively
 
@@ -79,3 +79,7 @@ Use a parent/world root with this quaternion and an unchanged body-local GLB chi
 This deliberately breaks v1 acceleration input: `linear`/`angular`, partial patches and missing controller registrations are rejected. Rebuild clients against the updated schemas/types. On session selection the server sends `protocol_info` with `protocolVersion: 2`, timeout seconds and session physics defaults/overrides (including `waterLevel`). Refuse unsupported versions visibly before enabling controls; surface registration/action rejection reasons in the HUD. The bundled relay forwards this announcement and replays it to newly opened browser tabs.
 
 JSON Schema validation catches incompatible incoming payloads at runtime. TypeScript provides authoring checks but cannot validate numeric ranges or GLB binary geometry; run schema validation at build time as well. Server schemas load at process startup; restart after changes. A version announcement detects this protocol generation, not every possible future schema drift. Any future breaking change requires a version bump plus coordinated server, schema, types, relay/SDK, tests and documentation changes.
+
+## Admin terrain flattening
+
+The dashboard **Flatten terrain** button sends admin-only `admin_flatten_terrain` for the selected session. It replaces all elevations with world Y=0 (including former no-data holes), rebuilds Rapier terrain colliders, settles actor roots onto the plane, preserves X/Z and heading, clears motion and held controls, and moves practice targets to Y=2. Actor registrations, input sequence counters and connections remain intact. New input frames resume control normally. The server publishes a new version of `map_data` and authoritative state, then `terrain_flattened` with `{sessionId,elevation:0,version}`. Other sessions are unchanged. Clients must rebuild terrain from replacement map data and discard interpolation across the actor repositioning; do not reset input sequence counters. Target resets alone still leave terrain unchanged.
