@@ -235,3 +235,18 @@ test('grounded vehicles stop promptly after throttle release without reversing o
     const airborne=model(t,[actor({position:{x:0,y:20,z:0},velocity:{x:10,y:0,z:0}})],{gravity:0,terrain:terrain()});
     assert.ok(Math.abs(run(airborne,2).centerVelocity.x-10)<0.001);
 });
+
+test('supported steering reverses with backward travel and reverse takeoff, but airborne attitude does not', t => {
+    for (const controller of ['ground', 'mecha']) {
+        const forward = model(t, [actor({ physicsProfile: { controller, maxSpeed: 100 } })]); run(forward, 0.2);
+        const positive = run(forward, 0.4, { move: { x: 1 }, rotate: { z: 1 } }); assert.ok(positive.rotationalRates.z > 0.05);
+        const reverse = model(t, [actor({ physicsProfile: { controller, maxSpeed: 100 } })]); run(reverse, 0.2);
+        const negative = run(reverse, 0.4, { move: { x: -1 }, rotate: { z: 1 } }); assert.ok(negative.rotationalRates.z < -0.05);
+        const coasting = model(t, [actor({ velocity: { x: -5, y: 0, z: 0 }, physicsProfile: { controller, maxSpeed: 100 } })]); run(coasting, 0.1);
+        const rollingBack = coasting.step({ a: frame({ sequence: 999, move: { x: 1 }, rotate: { z: 1 } }) }, 1/30).actors[0];
+        assert.ok(rollingBack.centerVelocity.x < -1, 'forward throttle has not yet reversed actual backward travel');
+        assert.ok(rollingBack.rotationalRates.z < -0.005, 'steering follows actual travel rather than throttle sign');
+    }
+    const airborne = model(t, [actor({ position: { x: 0, y: 20, z: 0 }, velocity: { x: -5, y: 0, z: 0 } })], { gravity: 0 });
+    assert.ok(run(airborne, 0.3, { move: { x: -1 }, rotate: { z: 1 } }).rotationalRates.z > 0.1);
+});

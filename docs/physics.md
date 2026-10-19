@@ -79,3 +79,7 @@ Valley, plateau, mountain range, flat, hills in four corners and city blocks can
 ## Grounded coasting friction
 
 Ground/mecha controllers retain low powered rolling resistance (0.6 m/s²), but neutral throttle adds 6 m/s² of coasting resistance while supported. Default forward coasting deceleration is therefore approximately 6.6 m/s²: from 25 m/s a level vehicle stops in about 3.8 seconds instead of roughly 42 seconds. Braking adds stronger resistance. Forces are capped so resistance cannot reverse motion through zero. Mecha neutral strafe uses the same bounded resistance. Airborne travel is unchanged; this is directional controller friction, rather than isotropic Rapier material friction that would also impede powered forward motion. Values are server-owned in `invariants.json.physics` (`rollingDeceleration`, `coastDeceleration`); no input/schema change is required.
+
+## Reverse steering
+
+Supported ground/mecha yaw torque follows the sign of longitudinal COM speed projected onto the terrain tangent forward axis. At speeds below `steeringReverseThreshold` (0.1 m/s by default), throttle direction supplies the sign. This preserves correct steering while coasting backward or braking toward a direction change and provides reverse steering from rest. Airborne attitude control is unchanged; clients must not apply a second inversion.

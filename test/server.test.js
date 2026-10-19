@@ -73,7 +73,7 @@ test('HTTP, UDP discovery, sessions, legacy events, and data receipts work end t
     assert.equal(player.protocolInfo.protocolVersion, 2);
     const oldAction = event(player, 'request_rejected'); player.emit('action', { linear: { x: 1 } });
     assert.match((await oldAction).reason, /actions:/);
-    const rotated = event(player, 'state', snapshot => snapshot.actors.some(a => a.id === player.id && a.rotationalRates.z > 0));
+    const rotated = event(player, 'state', snapshot => snapshot.actors.some(a => a.id === player.id && a.lastInputSequence === 0 && a.rotationalRates.z > 0));
     player.emit('action', frame({ jump: true, rotate: { z: 1 } }));
     assert.equal((await rotated).actors.find(a => a.id === player.id).lastInputSequence, 0);
     const stale = event(player, 'request_rejected'); player.emit('action', frame());
@@ -239,4 +239,19 @@ test('admins choose a session terrain preset and clients receive the matching ma
     admin.emit('admin_set_terrain_preset','city-blocks'); const map=await updated; assert.ok(map.terrain.depthMap.some(h=>h>0));
     assert.equal((await changed).version,before+1); assert.equal(server.sessions.get('second').data.map.terrain.preset,'valley');
     const summaries=await(await fetch(url+'/sessions')).json(); assert.equal(summaries.find(s=>s.id==='default').terrainPreset,'city-blocks');
+});
+
+test('terrain preview is admin-only, correlated to its request and does not apply a terrain change', {timeout:10000}, async t => {
+    const server=createGameServer({port:0,host:'127.0.0.1',discovery:false,logger,sessions:[{id:'default',terrainPreset:'flat'}]});
+    t.after(()=>server.close()); await server.start();
+    const url=`http://127.0.0.1:${server.http.address().port}`;
+    assert.match(await(await fetch(url+'/admin')).text(), /id="preset-preview"/);
+    const player=await connect(t,url),admin=await connect(t,url,{role:'admin'}),session=server.sessions.get();
+    const denied=event(player,'request_rejected');player.emit('admin_preview_terrain',{preset:'valley',requestId:1});assert.match((await denied).reason,/Admin/);
+    const bad=event(admin,'request_rejected');admin.emit('admin_preview_terrain',{preset:'valley',requestId:-1});assert.match((await bad).reason,/request ID/);
+    const version=session.data.resources.get('terrain').version,grid=session.terrain;
+    const preview=event(admin,'terrain_preview');admin.emit('admin_preview_terrain',{preset:'plateau',requestId:17});const candidate=await preview;
+    assert.equal(candidate.requestId,17);assert.equal(candidate.preset,'plateau');assert.equal(candidate.baseVersion,version);
+    assert.ok(candidate.terrain.depthMap.some(h=>h>0));assert.equal(session.terrain,grid);assert.equal(session.data.resources.get('terrain').version,version);
+    assert.equal(session.data.map.terrain.preset,'flat');
 });

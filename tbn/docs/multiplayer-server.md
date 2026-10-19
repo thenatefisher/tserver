@@ -130,3 +130,5 @@ Admin request `admin_disable_object_collisions` broadcasts `collision_settings` 
 ## Standard terrain selection
 
 `request_terrain_presets` returns `terrain_presets` with the schema-derived catalog and selected ID. Admin `admin_set_terrain_preset` takes a preset ID string and publishes replacement world/state plus `terrain_changed`. Handle this as a terrain/pose-cache reset without resetting input sequences. See [terrain-presets.md](terrain-presets.md).
+
+Admin `admin_preview_terrain` `{preset,requestId}` → `terrain_preview` `{sessionId,preset,requestId,baseVersion,terrain}` is read-only and private to the requesting admin. Previewing never versions or applies world data; `admin_set_terrain_preset` remains the explicit mutation.

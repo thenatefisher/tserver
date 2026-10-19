@@ -19,7 +19,7 @@ Send Socket.IO `action` at 30 Hz, including when controls are neutral:
 
 All fields and all vector components are required. `move` and `rotate` are independent per-axis normalized control effort in [-1, 1], not acceleration, speed, world direction, target orientation, or guaranteed motion. Do not normalize the six axes together. `brake` is [0, 1]; `jump` is boolean. Unknown fields and nonfinite/out-of-range values are rejected with `request_rejected`; the previous valid frame remains in effect until timeout. No `fire` action exists.
 
-Body axes are +X forward, +Y left, +Z up. Positive rotations obey the right-hand rule: X roll, Y pitch, Z yaw. In particular, positive pitch turns +X toward -Z (nose down); a conventional “pull up” control sends negative `rotate.y`. Positive yaw turns left. At zero heading, world forward is +X and left is -Z.
+Body axes are +X forward, +Y left, +Z up. Positive rotations obey the right-hand rule: X roll, Y pitch, Z yaw. In particular, positive pitch turns +X toward -Z (nose down); a conventional “pull up” control sends negative `rotate.y`. Positive yaw turns left for body-axis attitude control. Supported ground/mecha yaw is steering: the same input reverses yaw response while traveling backward. At zero heading, world forward is +X and left is -Z.
 
 `sequence` is a nonnegative safe integer, strictly increasing within the current actor registration/session. Start at 0. Repeated or older frames are rejected and do not refresh input lifetime. Reset after reconnect, accepted re-registration, and session change. A newer frame completely replaces the old held state. State includes `lastInputSequence`, the latest frame consumed by simulation, initially -1. This is a consumption acknowledgment, not a guarantee of achieved movement. Full authoritative snapshots remain approximately 15 Hz while simulation ticks are 30 Hz with internal 120 Hz fixed substeps.
 
@@ -99,3 +99,7 @@ Valley, plateau, mountain range, flat, hills in four corners and city blocks can
 ## Grounded coasting friction
 
 Ground/mecha controllers retain low powered rolling resistance (0.6 m/s²), but neutral throttle adds 6 m/s² of coasting resistance while supported. Default forward coasting deceleration is therefore approximately 6.6 m/s²: from 25 m/s a level vehicle stops in about 3.8 seconds instead of roughly 42 seconds. Braking adds stronger resistance. Forces are capped so resistance cannot reverse motion through zero. Mecha neutral strafe uses the same bounded resistance. Airborne travel is unchanged; this is directional controller friction, rather than isotropic Rapier material friction that would also impede powered forward motion. Values are server-owned in `invariants.json.physics` (`rollingDeceleration`, `coastDeceleration`); no input/schema change is required.
+
+## Reverse steering
+
+Supported ground/mecha steering reverses with actual backward longitudinal motion, including backward coasting while forward throttle slows the vehicle. Below 0.1 m/s, throttle direction selects the sign; neutral stationary steering keeps its usual sign. Clients send the same left/right effort in reverse and must not invert it again locally. Airborne attitude and hover/aircraft/boat yaw retain their body-axis meanings. The server threshold is `physics.steeringReverseThreshold`.

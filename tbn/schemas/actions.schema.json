@@ -71,7 +71,8 @@
           "minimum": -1,
           "maximum": 1
         }
-      }
+      },
+      "description": "Normalized rotation effort. Supported ground/mecha Z is steering: torque reverses during backward travel; clients must not invert it again. Airborne attitude remains body-axis rotation effort."
     },
     "brake": {
       "type": "number",

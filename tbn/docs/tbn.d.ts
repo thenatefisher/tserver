@@ -87,6 +87,15 @@ export interface TerrainPresetCatalog {
   selected: TerrainPresetId | null;
 }
 
+/** Read-only admin candidate; not a map resource or a world update. */
+export interface TerrainPreview {
+  sessionId: string;
+  preset: TerrainPresetId;
+  requestId: number;
+  baseVersion: number;
+  terrain: DtedTerrainData;
+}
+
 export interface TerrainChanged { sessionId: string; preset: TerrainPresetId | null; version: number; }
 
 export interface DtedTerrainData {

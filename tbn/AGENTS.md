@@ -96,3 +96,5 @@ And direct them to open `http://localhost:3000` in their browser.
 | **8. Conformance Testing** | [`tbn/docs/conformance-testing.md`](tbn/docs/conformance-testing.md) | Automated testing with `python3 tbn/test_conformance.py`. |
 
 Terrain presets and session selection: read [`tbn/docs/terrain-presets.md`](tbn/docs/terrain-presets.md). Render all presets from received DTED samples; city blocks are raised heightfield terrain, not missing GLB buildings. Neutral ground throttle now applies stronger server coasting friction; avoid local velocity overrides that fight this authoritative response.
+
+Supported ground/mecha reverse steering is handled by the server from longitudinal travel direction. Do not invert client steering again when reversing; keep ordinary left/right control mappings. Airborne yaw remains body-axis attitude effort.

@@ -1,6 +1,6 @@
 # Standard session terrain presets
 
-Every session can select its own terrain independently. The schema defines preset IDs/labels in `schemas/world.schema.json` under `terrain.preset`; the server exposes this catalog as `terrain_presets`. The dashboard's **Live map → Terrain → Apply terrain** controls the selected session and previews elevations on its radar.
+Every session can select its own terrain independently. The schema defines preset IDs/labels in `schemas/world.schema.json` under `terrain.preset`; the server exposes this catalog as `terrain_presets`. The dashboard's **Live map → Terrain** selector automatically previews the candidate in a separate preview canvas. The live radar remains unchanged until **Apply terrain** is clicked.
 
 | ID | Name | Layout |
 | --- | --- | --- |
@@ -38,3 +38,7 @@ The same options work with `sessions.createSession(...)`. To select resolution e
 - The **Flatten terrain** button selects the `flat` preset while retaining its existing `terrain_flattened` notice. Handle both terrain-change notices. Other sessions remain unchanged.
 
 `map_data.terrain.preset` and optional `seed` are metadata; `depthMap` is authoritative. Maps remain fixed during ordinary gameplay. Admin operations explicitly replace them and increment the existing world resource version, requiring fresh delivery receipts. The bundled relay forwards/cache-updates the catalog and forwards replacement notices.
+
+## Preview before applying
+
+Admin `admin_preview_terrain` takes `{preset,requestId}` with a nonnegative safe integer request ID. The server replies only to that admin with `terrain_preview`: `{sessionId,preset,requestId,baseVersion,terrain}`. Candidate generation uses the same resolution/seed and code as Apply, but changes no map, actors, colliders or resource versions and broadcasts nothing to players. The dashboard accepts a reply only if its request ID, preset and session still match the latest selection. Selecting another option, switching sessions, disconnecting or receiving a replacement live map invalidates earlier previews. Apply stays disabled until the current preview is ready.

@@ -93,11 +93,16 @@ class GameSession extends EventEmitter {
         this.snapshot(); this.emit('data_changed');
         return { sessionId: this.id, preset: terrain.grid.preset || null, version };
     }
-    /** Apply a standard preset using this session's existing resolution and seed; other sessions are untouched. */
-    setTerrainPreset(preset) {
+    /** Generate a candidate using the active resolution/seed without mutating session data or physics. */
+    previewTerrainPreset(preset) {
         if (typeof preset !== 'string') throw new Error('Terrain preset ID must be a string');
+        return { sessionId: this.id, preset, baseVersion: this.data.resources.get('terrain').version,
+            terrain: createDtedTerrain({ preset, spacing: this.data.map.terrain.spacing, seed: this.data.map.terrain.seed ?? 0 }) };
+    }
+    /** Apply the same grid used by previews; other sessions and this session's target visibility are preserved. */
+    setTerrainPreset(preset) {
         const map = structuredClone(this.data.map);
-        map.terrain = createDtedTerrain({ preset, spacing: map.terrain.spacing, seed: map.terrain.seed ?? 0 });
+        map.terrain = this.previewTerrainPreset(preset).terrain;
         return this.replaceTerrainMap(map);
     }
     /** Flatten this session to Y=0 through the standard preset path, preserving the original admin response. */

@@ -60,3 +60,16 @@ test('session creation selects a preset, switching rebuilds physics/data and pre
     a.actors.create('new','address2'); a.actors.register('new',fixture.registration()); assert.ok(a.data.actors.get('new').position.y>=70);
     a.flattenTerrain(); assert.equal(a.data.map.terrain.preset,'flat'); assert.equal(a.data.actors.get('p').position.y,0);
 });
+
+test('terrain previews match applied samples without changing terrain, actors, colliders or versions', t => {
+    const sessions = new SessionManager(); t.after(() => sessions.close());
+    const session = sessions.createSession({ id: 'preview', terrainPreset: 'flat', terrainSeed: 42 });
+    session.actors.create('p', 'address'); session.actors.register('p', fixture.registration());
+    const terrain = session.terrain, map = structuredClone(session.data.map), actors = session.physics.getState();
+    const handles = [...session.physics.terrainHandles], version = session.data.resources.get('terrain').version;
+    const preview = session.previewTerrainPreset('mountain-range');
+    assert.equal(preview.baseVersion, version); assert.equal(preview.sessionId, 'preview'); assert.equal(preview.terrain.seed, 42);
+    assert.equal(session.terrain, terrain); assert.deepEqual(session.data.map, map); assert.deepEqual(session.physics.getState(), actors);
+    assert.deepEqual([...session.physics.terrainHandles], handles); assert.equal(session.data.resources.get('terrain').version, version);
+    session.setTerrainPreset('mountain-range'); assert.deepEqual(session.terrain.grid, preview.terrain);
+});

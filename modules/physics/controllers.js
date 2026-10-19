@@ -31,6 +31,10 @@ function resist(rb, direction, deceleration, dt) {
     const speed = dot(rb.linvel(), direction);
     accelerate(rb, scale(direction, -Math.sign(speed) * Math.min(Math.abs(speed) / dt, deceleration)));
 }
+/** Return grounded steering sign from actual forward speed, falling back to throttle near rest; no side effects. */
+function steeringDirection(speed, throttle, threshold) {
+    return Math.abs(speed) > threshold ? Math.sign(speed) : throttle < 0 ? -1 : 1;
+}
 /** Apply one controller substep and consume rising jump edges even when airborne or unsupported. */
 function applyController(record, frame, support, dt, environment) {
     const { rb, shape, actor } = record, p = { ...invariants.physics, ...environment };
@@ -56,7 +60,8 @@ function applyController(record, frame, support, dt, environment) {
         resist(rb, forward, p.rollingDeceleration + (frame.move.x === 0 ? p.coastDeceleration : 0) + frame.brake * p.brakeDeceleration, dt);
         stabilize(rb, shape, support, p);
         // Ground yaw is deliberate steering; pitch/roll commands cannot fight terrain alignment.
-        angularControl(rb, shape, { x: 0, y: 0, z: frame.rotate.z }, p);
+        const steeringSign = steeringDirection(dot(rb.linvel(), forward), frame.move.x, p.steeringReverseThreshold);
+        angularControl(rb, shape, { x: 0, y: 0, z: frame.rotate.z * steeringSign }, p);
         if (risingJump) rb.applyImpulse(scale(support, rb.mass() * p.jumpSpeed), true);
     } else if (groundMode) {
         // Airborne ground vehicles can adjust attitude, but have no translational thrusters.

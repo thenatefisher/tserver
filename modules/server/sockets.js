@@ -182,6 +182,11 @@ class ClientSockets {
             requireAdmin();
             this.broadcast(client.session, 'collision_settings', client.session.disableObjectCollisions());
         });
+        guard('admin_preview_terrain', request => {
+            requireAdmin();
+            if (!Number.isSafeInteger(request?.requestId) || request.requestId < 0) throw new Error('Invalid terrain preview request ID');
+            socket.emit('terrain_preview', { ...client.session.previewTerrainPreset(request.preset), requestId: request.requestId });
+        });
         guard('admin_set_terrain_preset', preset => {
             requireAdmin();
             this.broadcast(client.session, 'terrain_changed', client.session.setTerrainPreset(preset));

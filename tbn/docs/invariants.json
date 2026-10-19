@@ -225,6 +225,7 @@
     "aircraftLiftSpeed": 10,
     "aircraftDrag": 0.08,
     "controllerSchema": "tbn/schemas/actor.schema.json#/properties/physicsProfile/properties/controller",
-    "coastDeceleration": 6
+    "coastDeceleration": 6,
+    "steeringReverseThreshold": 0.1
   }
 }
