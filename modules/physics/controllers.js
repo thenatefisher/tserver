@@ -8,6 +8,7 @@
 const { rotateVector } = require('./rotation');
 const { add, scale, dot, cross, normalize, tangent } = require('./vector');
 const { invariants } = require('../contracts');
+const { aircraftLift } = require('./aircraft');
 
 /** Apply acceleration at COM as force; controls never overwrite collision-generated velocities. */
 function accelerate(rb, acceleration) { rb.addForce(scale(acceleration, rb.mass()), true); }
@@ -70,10 +71,8 @@ function applyController(record, frame, support, dt, environment) {
         const effort = { x: frame.move.x * p.forwardAcceleration, y: frame.move.y * p.lateralAcceleration, z: frame.move.z * p.verticalAcceleration };
         if (mode === 'aircraft') {
             effort.y = 0; effort.z = 0;
-            const speed = Math.max(0, dot(rb.linvel(), local({ x: 1, y: 0, z: 0 })));
             const gravity = environment.gravity ?? invariants.input.standardGravityMetersPerSecondSquared;
-            // Deliberately simplified powered-flight model; lift grows with forward airspeed.
-            accelerate(rb, local({ x: 0, y: 0, z: gravity * Math.min(4, (speed / p.aircraftLiftSpeed) ** 2) }));
+            accelerate(rb, aircraftLift(rb.linvel(), q, gravity, p));
             accelerate(rb, scale(rb.linvel(), -p.aircraftDrag));
         } else if (mode === 'hover') {
             const center = rb.worldCom(), h = environment.terrain?.heightAt(center.x, center.z);

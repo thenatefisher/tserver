@@ -40,7 +40,7 @@ Both fields are required. `controller` is one of `ground`, `hover`, `aircraft`, 
 | `ground` (tank/wheeled) | X drive/reverse while supported; Y/Z ignored | Supported: Z steering only. Airborne: all attitude axes | Grounded jump edge; strong lateral grip; low rolling resistance; slope alignment |
 | `mecha` | Supported X drive and Y strafe; Z ignored | Same as ground | Grounded jump edge; terrain balance; single rigid body, no physical legs |
 | `hover` | All three thruster axes, including airborne | All axes; passive upright stabilization resists roll/pitch | Terrain-relative COM height servo; jump ignored |
-| `aircraft` | X propulsion/reverse; Y/Z ignored | All axes | Simplified airspeed-squared body-up lift and linear drag; jump ignored |
+| `aircraft` | X propulsion/reverse; Y/Z ignored | All axes | Bounded airspeed-squared lift with incidence response and linear drag; jump ignored |
 | `boat` | X propulsion; Y/Z ignored | Z only | Planar spring/damper buoyancy and upright recovery while immersed; jump ignored |
 
 Unsupported inputs cause no actuation; they are not malformed protocol. All six axes remain in every frame even when zero. Ground controllers have no airborne translation thrusters. Braking opposes supported travel for ground units and velocity for other modes. Passive systems can still move a neutral actor. These are game controllers, not engineering-grade track, flight, humanoid or fluid models. Aircraft have no simulated airfoils/stall; mechas have no gait simulation; boats have no waves or submerged-hull fluid solver. The water plane defaults to world Y=0 and is configured per session; land above it can ground a boat. Hovering over missing terrain provides no lift support.

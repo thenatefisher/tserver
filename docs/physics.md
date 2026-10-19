@@ -34,7 +34,7 @@ Terrain contact normals are averaged across near-contact manifold points. Only u
 
 Rapier handles impact impulses and restitution (default 0.25). A falling actor can bounce, rotate and settle. The attitude servo recovers tilted landed actors, including an inverted recovery direction. It does not force a flat attitude or replace the solver with ground-height clamping.
 
-Hover mode has all-axis thrust, upright stabilization and terrain-relative COM height support. Aircraft mode has forward propulsion, body attitude effort, simplified airspeed-squared lift and drag. Boat mode has planar spring/damper buoyancy and upright recovery while immersed, forward propulsion and yaw. These controllers intentionally supply game behavior; they are not detailed suspension, aerodynamic, humanoid or fluid simulations. `invariants.json.physics` owns defaults; trusted per-session environment overrides can tune them. `protocol_info` announces effective policy, including the water plane.
+Hover mode has all-axis thrust, upright stabilization and terrain-relative COM height support. Aircraft mode has forward propulsion, body attitude effort, incidence-sensitive airspeed-squared lift (25 m/s zero-incidence trim, 1.5 g load cap) and linear drag. Boat mode has planar spring/damper buoyancy and upright recovery while immersed, forward propulsion and yaw. These controllers intentionally supply game behavior; they are not detailed suspension, aerodynamic, humanoid or fluid simulations. `invariants.json.physics` owns defaults; trusted per-session environment overrides can tune them. `protocol_info` announces effective policy, including the water plane.
 
 ## Terrain
 

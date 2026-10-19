@@ -127,7 +127,7 @@ test('controller modes implement mecha strafe, hover support, flight lift and pl
     run(mecha, 0.5); assert.ok(run(mecha, 1, { move: { y: 1 } }).position.z < -0.1);
     const hover = model(t, [actor({ position: { x: -10, y: 0, z: 0 }, physicsProfile: { maxSpeed: 100, controller: 'hover' } })]);
     const hovering = run(hover, 4); assert.ok(hovering.position.y > 0.8 && hovering.position.y < 1.5);
-    const plane = model(t, [actor({ position: { x: 0, y: 10, z: 0 }, velocity: { x: 10, y: 0, z: 0 }, physicsProfile: { maxSpeed: 100, controller: 'aircraft' } })], {});
+    const plane = model(t, [actor({ position: { x: 0, y: 10, z: 0 }, velocity: { x: 25, y: 0, z: 0 }, physicsProfile: { maxSpeed: 100, controller: 'aircraft' } })], {});
     assert.ok(run(plane, 0.2, { move: { x: 0.1 } }).position.y > 9.8);
     const boat = model(t, [actor({ position: { x: 0, y: -1, z: 0 }, physicsProfile: { maxSpeed: 100, controller: 'boat' } })], { waterLevel: 0 });
     assert.ok(Math.abs(run(boat, 4).position.y + 0.5) < 0.05);
@@ -249,4 +249,23 @@ test('supported steering reverses with backward travel and reverse takeoff, but 
     }
     const airborne = model(t, [actor({ position: { x: 0, y: 20, z: 0 }, velocity: { x: -5, y: 0, z: 0 } })], { gravity: 0 });
     assert.ok(run(airborne, 0.3, { move: { x: -1 }, rotate: { z: 1 } }).rotationalRates.z > 0.1);
+});
+
+
+test('aircraft lift is bounded and nose-down attitude changes the flight path', t => {
+    const { aircraftLift } = require('../modules/physics/aircraft');
+    const policy = invariants.physics;
+    const lift = (speed, pitch) => aircraftLift({ x: speed, y: 0, z: 0 }, worldQuaternion({ x: 0, y: pitch, z: 0, order: 'XYZ' }), 9.81, policy);
+    assert.ok(Math.abs(lift(25, 0).y - 9.81) < 1e-5);
+    assert.ok(lift(100, 0).y <= 9.81 * 1.5 + 1e-5);
+    assert.ok(lift(25, 0.25).y < 0.01, 'nose down removes positive lift');
+    assert.ok(lift(25, -0.25).y > lift(25, 0).y, 'nose up increases lift');
+    const fly = pitch => {
+        const m = model(t, [actor({ position: { x: 0, y: 100, z: 0 }, velocity: { x: 25, y: 0, z: 0 },
+            orientation: { x: 0, y: pitch, z: 0, order: 'XYZ' }, physicsProfile: { maxSpeed: 100, controller: 'aircraft' } })], {});
+        return run(m, 0.5, { move: { x: 0.1 } });
+    };
+    const level = fly(0), down = fly(0.25);
+    assert.ok(down.velocity.y < level.velocity.y - 1, 'Rapier integrates reduced lift and downward thrust');
+    assert.ok(down.position.y < level.position.y - 0.3);
 });

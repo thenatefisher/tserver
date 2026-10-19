@@ -36,14 +36,14 @@ Use `protocol_info.physics` for effective session parameters, rather than hardco
 | `g` / `gravity` | 9.81 m/s² | World-down gravity magnitude; also scales aircraft lift |
 | `T` / `forwardAcceleration` | 29.43 m/s² | Full forward/reverse thrust acceleration |
 | `A` / `angularAcceleration` | 1 rad/s² | Per-axis commanded angular-acceleration scale before damping/contacts |
-| `vL` / `aircraftLiftSpeed` | 10 m/s | Forward speed producing 1 g of lift |
+| `vL` / `aircraftLiftSpeed` | 25 m/s | Forward speed producing 1 g at zero incidence |
 | `k` / `aircraftDrag` | 0.08 s⁻¹ | Linear drag coefficient |
 | `B` / `brakeDeceleration` | 20 m/s² | Full braking deceleration |
 | `maxAngularSpeed` | 3 rad/s | Limit on the angular-velocity vector magnitude |
 | `density` | 1 mass unit/m³ | Uniform session density |
 | Angular damping `d` | 0.3 s⁻¹ | Applied to all angular axes, even with active rotational input |
 
-The 4 g lift cap and aircraft damping coefficient 0.3 are currently implementation constants, not independent selectable profile fields or named `protocol_info.physics` parameters. Do not invent an `angularDamping` wire field. There is no aircraft engine spool-up, throttle slew limit, automatic leveling, altitude hold, airspeed hold or trim controller. Those can be implemented by the client using ordinary input frames.
+Lift tuning is announced in `protocol_info.physics`: `aircraftLiftSlope=4` per radian and `aircraftMaxLiftG=1.5`. The aircraft damping coefficient 0.3 remains an implementation constant, not a selectable profile field or named policy parameter. Do not invent an `angularDamping` wire field. There is no aircraft engine spool-up, throttle slew limit, automatic leveling, altitude hold, airspeed hold or trim controller. Those can be implemented by the client using ordinary input frames.
 
 ## Mass, center of mass and inertia
 
@@ -131,13 +131,18 @@ Using root velocity directly as COM velocity can introduce false airspeed/vertic
 
 ## Exact thrust, lift, drag and braking equations
 
-Define world-space unit vectors `f = R*(1,0,0)` (forward) and `n = R*(0,0,1)` (body up). Let `v` be world COM velocity and `uT = move.x`:
+Define world-space unit vectors `f = R*(1,0,0)` (forward) and `left = R*(0,1,0)` (body left). Let `v` be world COM velocity and `uT = move.x`:
 
 ```text
 v_forward = max(0, dot(v, f))
-C = min(4, (v_forward / vL)²)
+vb = inverse(R) * v
+alpha = atan2(-vb.z, vb.x)
+coefficient = clamp(1 + aircraftLiftSlope * alpha, -1, 2)
+C = clamp((v_forward / vL)² * coefficient, -aircraftMaxLiftG, aircraftMaxLiftG)
+liftDirection = normalize(cross(R*(vb.x,0,vb.z), left))
+# If vb.x <= 0, lift is zero (skip alpha/direction computation).
 a_thrust = T * uT * f
-a_lift = g * C * n
+a_lift = g * C * liftDirection
 a_drag = -k * v
 a_gravity = (0, -g, 0)
 a_brake = 0                                      if |v| = 0
@@ -150,12 +155,13 @@ Rapier adds gravity and resolves contacts. The brake cap limits its own contribu
 
 Important consequences for hold controllers:
 
-- “Airspeed” here is the **positive forward COM-velocity projection**, not total speed and not a measured wind-relative velocity. There is no wind model. Backward or purely sideways motion produces no lift through this formula.
-- At upright, level attitude, 10 m/s forward speed gives 1 g of lift and approximately cancels gravity. At 20 m/s and above, lift is capped at 4 g. With `gravity=0`, this implementation also produces zero lift.
-- Lift always points along body up, even when banked or inverted. It has no angle-of-attack, airfoil, stall, induced-drag or ground-effect model. There are no speed-dependent rotation-control effects.
-- Pitch changes the thrust/lift directions, not the lift coefficient directly. Bank reduces vertical lift and provides horizontal lift. For zero vertical speed, vertical acceleration before contacts is `T*uT*f.y + g*C*n.y - g` (drag/brake add terms when vertical velocity is nonzero).
-- In an upright, level, unbanked equilibrium without braking, the approximate throttle feed-forward is `uT = k*v_forward/T`. At 10 m/s that is about 0.0272, not full throttle. Zero throttle still permits passive lift, drag and gravity.
-- Level altitude hold may be infeasible below 10 m/s, at excessive bank, with a low selected `maxSpeed`, or when required actuation saturates. Account for those limits rather than winding up an integrator.
+- “Airspeed” here is the **positive forward COM-velocity projection** for lift magnitude, with pitch-plane incidence from body X/Z velocity; not total speed and not a measured wind-relative velocity. There is no wind model. Backward or purely sideways motion produces no lift through this formula.
+- At upright, level attitude with horizontal velocity, 25 m/s gives 1 g of lift. Lift magnitude is capped at 1.5 g in either direction, replacing the old 4 g cap and 10 m/s trim speed. With `gravity=0`, lift is zero.
+- Incidence `alpha` measures nose elevation relative to the pitch-plane flight path, not world pitch alone. Nose-down attitude relative to horizontal travel reduces lift immediately; sufficiently negative incidence creates downward lift. As the aircraft descends, incidence changes again. Pitch therefore changes vertical acceleration, not vertical velocity instantaneously.
+- Lift is perpendicular to pitch-plane airflow, tilted by bank, and can be signed. There is no detailed stall, airfoil, induced-drag, wind or ground-effect model. Rotation-control torque remains independent of airspeed.
+- Vertical acceleration before contacts is `T*uT*f.y + g*C*liftDirection.y - g - k*v.y`, plus braking. Positive body Y pitch is nose down; negative is nose up. Existing upward momentum takes time to dissipate.
+- In upright, level, unbanked equilibrium without braking, thrust feed-forward is approximately `uT = k*v_forward/T`. At 25 m/s this is about 0.068. Zero throttle still permits passive lift, drag and gravity. Full throttle continues accelerating and is not an altitude-hold command.
+- Level altitude hold can require positive incidence below 25 m/s or reduced incidence above it. It may be infeasible at low speed, excessive bank, low registered `maxSpeed`, or actuator saturation. Include the incidence dependence and load cap in the controller, with anti-windup.
 - The server caps total COM speed to the registered `maxSpeed` after each outer substep. It is a hard vector-magnitude clamp, not an aerodynamic terminal-speed model. Contact/boundary constraints can also override unconstrained flight.
 
 ## Timing, timestamps and latency
