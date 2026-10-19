@@ -27,7 +27,9 @@ function createTerrainColliders(world, terrain, policy = {}) {
             for (const tri of [[a, below, b], [b, below, d]]) if (tri.every(i => valid[i])) indices.push(...tri);
         }
         if (indices.length) {
-            const collider = world.createCollider(RAPIER.ColliderDesc.trimesh(new Float32Array(vertices), new Uint32Array(indices))
+            // Shared triangle edges are not physical ridges. Without this correction,
+            // Rapier can generate sideways/upward edge impulses even on a flat grid.
+            const collider = world.createCollider(RAPIER.ColliderDesc.trimesh(new Float32Array(vertices), new Uint32Array(indices), RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES)
                 .setFriction(0).setRestitution(policy.restitution ?? invariants.physics.restitution));
             handles.add(collider.handle);
         }

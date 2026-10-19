@@ -198,3 +198,27 @@ test('terrain-only mode passes through actors and late-added obstacles while kee
     m.flattenTerrain(terrain()); assert.equal(m.terrainOnlyCollisions, true);
     run(m, 0.2); assert.ok(m.getState().actors.every(a => a.grounded));
 });
+
+
+test('sustained forward-only driving remains grounded across flat triangle edges and chunk seams', t => {
+    for (const spacing of [10, 500]) for (const terrainOnly of [false, true]) {
+        const count = 1000 / spacing;
+        const flat = new TerrainModel({ type: 'dted', width: 1000, depth: 1000, columns: count, rows: count,
+            origin: { x: -500, z: -500 }, spacing: { x: spacing, z: spacing }, elevationScale: 0.1,
+            depthMap: Array(count * count).fill(0) });
+        const m = model(t, [actor({ position: { x: -20, y: 0, z: 2 }, physicsProfile: { maxSpeed: 25, controller: 'ground' } })], { terrain: flat });
+        if (terrainOnly) m.disableObjectCollisions();
+        let maxVerticalSpeed = 0, minimumUp = 1, maxHeight = 0;
+        for (let i = 0; i < 600; i++) {
+            const moved = m.step({ a: frame({ sequence: i, move: { x: 1 } }) }, 1/60).actors[0];
+            maxVerticalSpeed = Math.max(maxVerticalSpeed, Math.abs(moved.centerVelocity.y));
+            minimumUp = Math.min(minimumUp, rotateBodyToWorld({ z: 1 }, moved.orientation).y);
+            maxHeight = Math.max(maxHeight, Math.abs(moved.position.y));
+        }
+        const detail = JSON.stringify({ spacing, terrainOnly, maxVerticalSpeed, minimumUp, maxHeight });
+        assert.ok(maxVerticalSpeed < 0.01, detail);
+        assert.ok(minimumUp > 0.999, detail);
+        assert.ok(maxHeight < 0.005, detail);
+        assert.ok(m.getState().actors[0].position.x > 200, 'must cross the default grid chunk boundary at X=140');
+    }
+});
