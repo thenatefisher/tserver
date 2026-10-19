@@ -198,3 +198,27 @@ test('admin flatten publishes the replacement map/state and rejects player reque
     assert.equal((await done).sessionId, 'default'); await update; await receipt;
     assert.equal(other.terrain, otherTerrain); assert.equal(other.data.resources.get('terrain').version, 1);
 });
+
+test('admin diagnostic buttons clear targets and disable object collisions only within the selected session', { timeout: 10000 }, async t => {
+    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger, sessions: [{ id: 'default' }, { id: 'second' }] });
+    t.after(() => server.close()); await server.start();
+    const url = `http://127.0.0.1:${server.http.address().port}`;
+    const html = await (await fetch(url + '/admin')).text();
+    assert.match(html, /id="remove-targets"/); assert.match(html, /id="disable-object-collisions"/);
+    const player = await connect(t, url), admin = await connect(t, url, { role: 'admin' });
+    for (const action of ['admin_remove_targets', 'admin_disable_object_collisions']) {
+        const rejected = event(player, 'request_rejected'); player.emit(action); assert.match((await rejected).reason, /Admin/);
+    }
+    const map = event(player, 'map_data', m => m.targets.length === 0), removed = event(admin, 'targets_removed');
+    admin.emit('admin_remove_targets'); assert.equal((await removed).removed, 15); await map;
+    assert.equal(server.sessions.get('second').data.map.targets.length, 15);
+    const disabled = event(player, 'collision_settings', s => s.terrainOnlyCollisions);
+    admin.emit('admin_disable_object_collisions'); assert.equal((await disabled).sessionId, 'default');
+    assert.equal(server.sessions.get().physics.terrainOnlyCollisions, true);
+    assert.equal(server.sessions.get('second').physics.terrainOnlyCollisions, false);
+    const accepted = event(player, 'registration_accepted'); player.emit('register_actor', meshFixture.registration()); await accepted;
+    const grounded = await event(player, 'state', s => s.actors.some(a => a.id === player.id && a.grounded));
+    assert.ok(grounded.actors[0].grounded, 'new actor retains terrain support');
+    const settings = event(admin, 'collision_settings'); admin.emit('join_session', 'second'); assert.equal((await settings).terrainOnlyCollisions, false);
+    const back = event(admin, 'collision_settings'); admin.emit('join_session', 'default'); assert.equal((await back).terrainOnlyCollisions, true);
+});

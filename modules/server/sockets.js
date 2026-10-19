@@ -80,6 +80,7 @@ class ClientSockets {
         session.snapshot();
         socket.emit(client.admin || client.registration ? 'session_joined' : 'session_selected', { sessionId: session.id, name: session.name });
         socket.emit('protocol_info', { protocolVersion, inputTimeoutSeconds: invariants.input.inputTimeoutSeconds, physics: { ...invariants.physics, ...session.physics.environment, terrain: undefined, groundHeight: undefined, bounds: undefined } });
+        socket.emit('collision_settings', { sessionId: session.id, terrainOnlyCollisions: session.physics.terrainOnlyCollisions });
         socket.emit('init', socket.id);
         const distribution = this.bindings.get(session.id).distribution;
         distribution.flush(socket); distribution.manifest(socket);
@@ -171,6 +172,14 @@ class ClientSockets {
         });
         guard('admin_unban_actor', address => { requireAdmin(); client.session.actors.unban(address); });
         guard('admin_reset_targets', () => { requireAdmin(); client.session.resetTargets(); });
+        guard('admin_remove_targets', () => {
+            requireAdmin();
+            this.broadcast(client.session, 'targets_removed', client.session.removeTargets());
+        });
+        guard('admin_disable_object_collisions', () => {
+            requireAdmin();
+            this.broadcast(client.session, 'collision_settings', client.session.disableObjectCollisions());
+        });
         guard('admin_flatten_terrain', () => {
             requireAdmin();
             const result = client.session.flattenTerrain();

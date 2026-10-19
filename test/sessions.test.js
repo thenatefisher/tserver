@@ -104,3 +104,16 @@ test('admin flatten replaces terrain colliders and versions, settles actors and 
     a.actors.create('new', 'another-address'); a.actors.register('new', meshFixture.registration()); assert.equal(a.data.actors.get('new').position.y, 0);
     assert.equal(a.flattenTerrain().version, 4, 'repeat flatten remains supported after target updates');
 });
+
+test('removing targets publishes an empty world list without replacing terrain or touching another session', t => {
+    const sessions = new SessionManager(); t.after(() => sessions.close());
+    const a = sessions.createSession({ id: 'a' }), b = sessions.createSession({ id: 'b' });
+    const terrain = a.terrain, world = a.physics.world, otherTargets = structuredClone(b.data.map.targets);
+    a.data.addClient('viewer'); a.data.sent('viewer', 'terrain', 1); a.data.acknowledge('viewer', 'terrain', 1);
+    assert.deepEqual(a.removeTargets(), { sessionId: 'a', removed: 15, version: 2 });
+    assert.deepEqual(a.data.map.targets, []); assert.equal(a.terrain, terrain); assert.equal(a.physics.world, world);
+    assert.equal(a.data.manifest('viewer').resources.find(r => r.resource === 'terrain').needsUpdate, true);
+    assert.deepEqual(b.data.map.targets, otherTargets); assert.equal(b.data.resources.get('terrain').version, 1);
+    assert.equal(a.removeTargets().removed, 0);
+    a.resetTargets(); assert.equal(a.data.map.targets.length, 15);
+});

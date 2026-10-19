@@ -118,3 +118,11 @@ State actors now include `grounded` and `lastInputSequence` along with body angu
 ## Admin flatten event
 
 Admin observers may send `admin_flatten_terrain` (no payload) to flatten their selected session to Y=0. Player requests are rejected. Updated `map_data` and state precede `terrain_flattened` `{sessionId,elevation:0,version}` for all session members. Actors are settled with zero velocity; heading/X/Z, registrations and sequence counters persist. Rebuild client terrain caches and reset interpolation on this notice. Other sessions are unchanged.
+
+## Session diagnostic controls
+
+The admin dashboard offers **Remove targets** and **Disable object collisions** for the selected session. Removing targets publishes an empty `targets` list through versioned `map_data` and a `targets_removed` notice `{sessionId,removed,version}`. Clients must replace their target rendering from the new world data. Terrain is unchanged. **Respawn targets** restores the practice targets; these targets currently have no physics colliders.
+
+Disabling object collisions enables a persistent **terrain-only collision** mode. Rapier collision groups keep actor-to-terrain contact but disable every non-terrain object pair, including actor-to-actor and actor-to-obstacle interactions. Bodies, GLBs, mass, inertia, movement, gravity and world-bound constraints remain. This mode applies to existing and newly registered actors and survives terrain flattening. It resets with a new session/process, rather than automatically re-enabling on reconnect.
+
+Admin request `admin_disable_object_collisions` broadcasts `collision_settings` with `{sessionId,terrainOnlyCollisions:true,affectedColliders}`. Selection/join also supplies `collision_settings` (the count is optional), so reconnecting dashboards and clients can display the current mode. Predicted client physics should apply the same terrain-only filter; do not delete actor meshes or disable terrain contact. The bundled relay forwards and caches these settings for newly opened views. Target request `admin_remove_targets` and collision-mode changes require the admin role; ordinary players receive `request_rejected`.

@@ -10,7 +10,7 @@ const $ = id => document.getElementById(id);
 const socket = io({ auth: { role: 'admin', sync: true, adminToken: sessionStorage.getItem('tbnAdminToken') || '' } });
 let clients = [], manifest = {}, selectedId = null, map = null, state = { actors: [] };
 let viewerPromise, model, scene, camera, renderer, controls, initialCamera;
-let meshVersion = 0;
+let meshVersion = 0, terrainOnlyCollisions = false;
 /** Format elapsed seconds for display without changing the metric value. */
 const duration = seconds => {
     const s = Math.max(0, Math.floor(seconds));
@@ -105,6 +105,8 @@ socket.on('sessions_list', sessions => {
 });
 socket.on('session_joined', session => {
     $('flatten-terrain').disabled = false; $('flatten-terrain').textContent = 'Flatten terrain';
+    $('remove-targets').disabled = false; $('remove-targets').textContent = 'Remove targets';
+    terrainOnlyCollisions = false; $('disable-object-collisions').disabled = false; $('disable-object-collisions').textContent = 'Disable object collisions';
     clients = []; manifest = {}; selectedId = null; state = { actors: [] };
     renderClients(); clearMesh('Choose View beside a registered mesh.');
     $('selected').textContent = `Session: ${session.name}`;
@@ -116,7 +118,7 @@ socket.on('connect', () => {
     log('Dashboard connected'); socket.emit('request_sessions');
 });
 socket.on('disconnect', reason => {
-    $('flatten-terrain').disabled = true;
+    $('flatten-terrain').disabled = true; $('remove-targets').disabled = true; $('disable-object-collisions').disabled = true;
     $('status').textContent = 'Disconnected · reconnecting'; $('status').style.color = '#fbbf24';
     log(`Disconnected: ${reason}`);
     clients = []; manifest = {}; selectedId = null; state = { actors: [] };
@@ -150,6 +152,24 @@ socket.on('map_data', data => { map = data; });
 socket.on('state', data => { state = data; });
 $('reset-targets').addEventListener('click', () => { socket.emit('admin_reset_targets'); log('Practice targets reset'); });
 
+$('remove-targets').addEventListener('click', () => {
+    $('remove-targets').disabled = true; $('remove-targets').textContent = 'Removing…';
+    socket.emit('admin_remove_targets');
+});
+socket.on('targets_removed', result => {
+    $('remove-targets').disabled = false; $('remove-targets').textContent = 'Remove targets';
+    log(`Removed ${result.removed} targets (world version ${result.version})`);
+});
+$('disable-object-collisions').addEventListener('click', () => {
+    $('disable-object-collisions').disabled = true; $('disable-object-collisions').textContent = 'Disabling…';
+    socket.emit('admin_disable_object_collisions');
+});
+socket.on('collision_settings', settings => {
+    terrainOnlyCollisions = settings.terrainOnlyCollisions;
+    $('disable-object-collisions').disabled = terrainOnlyCollisions || !socket.connected;
+    $('disable-object-collisions').textContent = terrainOnlyCollisions ? 'Object collisions disabled' : 'Disable object collisions';
+    if (terrainOnlyCollisions) log('Object collisions disabled; terrain contact preserved');
+});
 $('flatten-terrain').addEventListener('click', () => {
     $('flatten-terrain').disabled = true; $('flatten-terrain').textContent = 'Flattening…';
     socket.emit('admin_flatten_terrain');
@@ -160,6 +180,13 @@ socket.on('terrain_flattened', result => {
 });
 socket.on('request_rejected', error => {
     log(error.reason);
+    if (error.event === 'admin_disable_object_collisions') {
+        $('disable-object-collisions').disabled = terrainOnlyCollisions || !socket.connected;
+        $('disable-object-collisions').textContent = terrainOnlyCollisions ? 'Object collisions disabled' : 'Disable object collisions';
+    }
+    if (error.event === 'admin_remove_targets') {
+        $('remove-targets').disabled = !socket.connected; $('remove-targets').textContent = 'Remove targets';
+    }
     if (error.event === 'admin_flatten_terrain') {
         $('flatten-terrain').disabled = !socket.connected; $('flatten-terrain').textContent = 'Flatten terrain';
     }

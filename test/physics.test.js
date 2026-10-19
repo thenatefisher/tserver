@@ -178,3 +178,23 @@ test('concave/disconnected solids retain their central gap through bounded conve
     const solid = m.world.castRay(new RAPIER.Ray({ x: 0, y: 20, z: 1 }, { x: 0, y: -1, z: 0 }), 30, true);
     assert.ok(solid);
 });
+
+test('terrain-only mode passes through actors and late-added obstacles while keeping ground support and mass', t => {
+    const a = actor({ position: { x: -2, y: 10, z: 0 }, velocity: { x: 3, y: 0, z: 0 } });
+    const b = actor({ id: 'b', position: { x: 2, y: 10, z: 0 }, velocity: { x: -3, y: 0, z: 0 } });
+    const m = model(t, [a, b]);
+    const mass = m.records.get('a').rb.mass(), terrainHandles = [...m.terrainHandles];
+    assert.equal(m.disableObjectCollisions(), 2);
+    m.world.createCollider(RAPIER.ColliderDesc.cuboid(0.5, 50, 0.5));
+    run(m, 1);
+    const [left, right] = m.getState().actors;
+    assert.ok(left.position.x > right.position.x, 'actors must cross each other and the static obstacle');
+    run(m, 4);
+    assert.ok(m.getState().actors.every(a => a.grounded && Math.abs(a.position.y) < 0.01));
+    assert.equal(m.records.get('a').rb.mass(), mass); assert.deepEqual([...m.terrainHandles], terrainHandles);
+    m.addActor(actor({ id: 'new', position: { x: 10, y: 2, z: 0 } })); run(m, 3);
+    assert.ok(m.getState().actors.find(a => a.id === 'new').grounded);
+    assert.equal(m.disableObjectCollisions(), 4, 'repeat calls include later actors and obstacles');
+    m.flattenTerrain(terrain()); assert.equal(m.terrainOnlyCollisions, true);
+    run(m, 0.2); assert.ok(m.getState().actors.every(a => a.grounded));
+});

@@ -8,6 +8,7 @@
 const { RAPIER, initializePhysics, isInitialized } = require('./runtime');
 const { normalizeAction } = require('./actions');
 const { createTerrainColliders, terrainSupport } = require('./terrain');
+const { terrainOnlyCollisionPolicy } = require('./collision-policy');
 const { applyController } = require('./controllers');
 const { worldQuaternion, bodyOrientation, rotateVector } = require('./rotation');
 const { vector, add, scale, cross, dot, clampVector } = require('./vector');
@@ -26,6 +27,7 @@ class PhysicsModel {
     /** Queue initial actors, load WASM once and expose ready; construction never starts a timer. */
     constructor(state, unused, environment = {}) {
         this.state = cloneState(state); this.environment = environment; this.records = new Map();
+        this.terrainOnlyCollisions = false;
         this.time = 0; this.accumulator = 0; this.closed = false;
         if (isInitialized()) { this.initialize(); this.ready = Promise.resolve(this); }
         else this.ready = initializePhysics().then(() => { if (!this.closed) this.initialize(); return this; });
@@ -80,6 +82,8 @@ class PhysicsModel {
                 record.sequence = input.sequence; record.frame = normalizeAction(input); record.receivedAt = this.time;
             }
         }
+        // Reclassify before simulation so even externally added obstacles obey the diagnostic policy.
+        if (this.terrainOnlyCollisions) terrainOnlyCollisionPolicy(this.world, this.terrainHandles);
         const h = invariants.physics.fixedSubstepSeconds;
         this.accumulator += dt;
         while (this.accumulator >= h - 1e-10) {
@@ -134,6 +138,12 @@ class PhysicsModel {
         if (record) this.world.removeRigidBody(record.rb);
         this.records.delete(id); this.state.actors = this.state.actors.filter(actor => actor.id !== id);
     }
+    /** Disable every object-to-object collision for this session while preserving terrain contacts and mass. */
+    disableObjectCollisions() {
+        if (!this.world || this.closed) throw new Error('Physics is not ready');
+        this.terrainOnlyCollisions = true;
+        return terrainOnlyCollisionPolicy(this.world, this.terrainHandles);
+    }
     /** Swap static terrain, settle actor roots onto a flat plane and clear motion/input without resetting sequences. */
     flattenTerrain(terrain, sequences = {}) {
         if (!this.world || this.closed) throw new Error('Physics is not ready');
@@ -141,6 +151,7 @@ class PhysicsModel {
         // Build replacements before removing old colliders; all operations run within one server turn.
         for (const handle of this.terrainHandles) this.world.removeCollider(this.world.getCollider(handle), false);
         this.terrainHandles = handles; this.environment.terrain = terrain;
+        if (this.terrainOnlyCollisions) terrainOnlyCollisionPolicy(this.world, this.terrainHandles);
         for (const record of this.records.values()) {
             const { actor, rb } = record, forward = rotateVector({ x: 1, y: 0, z: 0 }, rb.rotation());
             const orientation = { x: 0, y: 0, z: Math.atan2(-forward.z, forward.x), order: 'XYZ' };

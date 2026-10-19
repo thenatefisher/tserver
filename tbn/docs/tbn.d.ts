@@ -123,6 +123,14 @@ export interface ProtocolInfo {
   physics: Record<string, number | string>;
 }
 
+/** Session collision diagnostic policy, sent on join and admin changes. */
+export interface CollisionSettings {
+  sessionId: string;
+  /** Objects pass through each other; terrain collisions and mass remain enabled. */
+  terrainOnlyCollisions: boolean;
+  affectedColliders?: number;
+}
+
 export interface ActorState {
   id: string;
   name: string;

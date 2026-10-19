@@ -55,6 +55,7 @@ class ClientNode extends EventEmitter {
         this.gameServerSocket = null;
         this.isConnectedToGameServer = false;
         this.currentServerUrl = null;
+        this.cachedCollisionSettings = null;
         this.cachedRegistrationAccepted = null;
         this.cachedProtocolInfo = null;
         this.cachedMapData = null;
@@ -280,7 +281,7 @@ class ClientNode extends EventEmitter {
             this.emit('game:connect', socket);
         });
         socket.on('disconnect', (reason) => {
-            this.cachedRegistrationAccepted = null; this.cachedProtocolInfo = null;
+            this.cachedRegistrationAccepted = null; this.cachedProtocolInfo = null; this.cachedCollisionSettings = null;
             this.isConnectedToGameServer = false;
             console.log(`[LOCAL CLIENT NODE] Disconnected from Game Server (${this.currentServerUrl}). Retrying...`);
             this.ioLocal.emit('server_status', { connected: false, serverUrl: this.currentServerUrl });
@@ -296,11 +297,12 @@ class ClientNode extends EventEmitter {
         // These are the standard game protocol events. Keep them when
         // overriding this method unless the custom client intentionally uses a
         // different protocol.
+        this.relayFromGame(socket, 'collision_settings', data => { this.cachedCollisionSettings = data; });
         this.relayFromGame(socket, 'protocol_info', data => { this.cachedProtocolInfo = data; });
         this.relayFromGame(socket, 'init', () => {
             this.cachedMapData = null; this.cachedActorsList = {}; this.cachedMeshManifest = {}; this.cachedMeshes = {}; this.currentGameState = {};
         });
-        for (const event of ['session_selected', 'session_joined', 'session_rejected', 'session_closed', 'sessions_list', 'request_rejected', 'data_version', 'data_manifest', 'data_removed', 'terrain_flattened']) this.relayFromGame(socket, event);
+        for (const event of ['session_selected', 'session_joined', 'session_rejected', 'session_closed', 'sessions_list', 'request_rejected', 'data_version', 'data_manifest', 'data_removed', 'terrain_flattened', 'targets_removed']) this.relayFromGame(socket, event);
         this.relayFromGame(socket, 'map_data', data => { this.cachedMapData = data; });
         this.relayFromGame(socket, 'mesh_manifest', data => {
             this.cachedMeshManifest = data;
@@ -380,6 +382,7 @@ class ClientNode extends EventEmitter {
         });
         browserSocket.emit('server_status', { connected: this.isConnectedToGameServer, serverUrl: this.currentServerUrl, playerName: this.playerName });
         if (this.cachedProtocolInfo) browserSocket.emit('protocol_info', this.cachedProtocolInfo);
+        if (this.cachedCollisionSettings) browserSocket.emit('collision_settings', this.cachedCollisionSettings);
         if (this.gameServerSocket && this.gameServerSocket.id) browserSocket.emit('init', this.gameServerSocket.id);
         if (this.cachedRegistrationAccepted) browserSocket.emit('registration_accepted', this.cachedRegistrationAccepted);
         if (this.cachedMapData) browserSocket.emit('map_data', this.cachedMapData);

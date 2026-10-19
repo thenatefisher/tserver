@@ -60,6 +60,19 @@ class GameSession extends EventEmitter {
         this.data.set('terrain', this.data.map);
         this.emit('data_changed');
     }
+    /** Remove practice targets from this session and publish an updated world resource. */
+    removeTargets() {
+        const removed = this.data.map.targets?.length || 0;
+        this.data.map.targets = [];
+        const version = this.data.set('terrain', this.data.map);
+        this.emit('data_changed');
+        return { sessionId: this.id, removed, version };
+    }
+    /** Enable terrain-only collision diagnostics without removing actors, assets or registrations. */
+    disableObjectCollisions() {
+        const affectedColliders = this.physics.disableObjectCollisions();
+        return { sessionId: this.id, terrainOnlyCollisions: true, affectedColliders };
+    }
     /** Flatten this session to world Y=0, republish terrain/state and settle actors without reconnecting clients. */
     flattenTerrain() {
         const map = structuredClone(this.data.map);
