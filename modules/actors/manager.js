@@ -1,17 +1,30 @@
+/**
+ * Manage session actor registration, private solid shapes, actions and moderation.
+ * Inputs: Session data, physics model, uniform density, terrain and validated network requests.
+ * Outputs: Actor records, public registration descriptors and moderation results.
+ * Side effects: Mutates actor/model/resource stores; kick and ban call a supplied disconnect callback.
+ * Coupling: contracts and GLB validation guard inputs; physics/body and contacts place solids.
+ */
 const { decodeGlb, validateGlb } = require('./glb');
 const { validateMeshMetadata } = require('./validation');
 const { HITBOX_SIZE, MAX_VISUAL_SIZE, DEFAULT_HEALTH } = require('./constants');
 const { validate, orientationOrder } = require('../contracts');
 const { mergeAction } = require('../physics/actions');
+const { createSolidBody } = require('../physics/body');
+const { terrainContact } = require('../physics/contacts');
 const { sampleTerrainHeight } = require('../terrain');
 
 class ActorManager {
-    constructor(data, physics) {
+    /** Retain session-owned stores/model and the shared terrain/density policy; allocates the session ban set. */
+    constructor(data, physics, { density = 1, terrain } = {}) {
         this.data = data;
         this.physics = physics;
+        this.density = density; this.terrain = terrain;
         this.bans = new Set();
     }
+    /** Return whether the session currently bans the observed network address. */
     isBanned(address) { return this.bans.has(address); }
+    /** Allocate and add a session actor to the data store and physics model; reject banned addresses. */
     create(id, address) {
         if (this.isBanned(address)) throw new Error('Client is banned from this session');
         const x = (Math.random() - 0.5) * 40, z = (Math.random() - 0.5) * 40;
@@ -25,17 +38,26 @@ class ActorManager {
         this.physics.addActor(actor);
         return actor;
     }
+    /** Create a fresh session actor from an accepted registration and rebuild its density-specific solid. */
     attach(id, address, registration) {
         const actor = this.create(id, address);
         actor.name = registration.descriptor.name;
         actor.clientType = registration.descriptor.clientType;
         actor.physicsProfile = { ...registration.physicsProfile };
+        actor.body = createSolidBody(registration.body, this.density);
+        this.place(actor);
         this.physics.addActor(actor);
         this.data.register(id, structuredClone(registration.descriptor), {
             ...registration.geometry, buffer: Buffer.from(registration.geometry.buffer)
         });
         return actor;
     }
+    /** Raise a working actor above terrain using its actual mesh contacts; leaves clear airborne poses alone. */
+    place(actor) {
+        const contact = terrainContact(actor, { terrain: this.terrain });
+        if (Number.isFinite(contact.height)) actor.position.y = Math.max(actor.position.y, contact.height);
+    }
+    /** Validate an actor package/solid atomically, update its model and publish registration/GLB versions. */
     register(id, input) {
         const actor = this.data.actors.get(id);
         if (!actor) throw new Error('Player actor does not exist');
@@ -48,6 +70,9 @@ class ActorManager {
             const actualSize = info.bounds.max[axis] - info.bounds.min[axis];
             if (actualSize > MAX_VISUAL_SIZE[axis] || Math.abs(actualSize - metadata.visualSize[axis]) > 0.01) throw new Error('Declared visualSize does not match transformed GLB');
         }
+        const body = createSolidBody(info, this.density);
+        actor.body = body;
+        this.place(actor);
         actor.name = input.name;
         actor.clientType = input.clientType;
         actor.physicsProfile = { ...input.physicsProfile };
@@ -56,23 +81,27 @@ class ActorManager {
         this.data.register(id, descriptor, { id, buffer, metadata, triangles: info.triangles, hitbox: { ...HITBOX_SIZE } });
         return descriptor;
     }
+    /** Validate and merge a partial action into the session actor; invalid commands leave it unchanged. */
     action(id, input) {
         validate('actions', input);
         const actor = this.data.actors.get(id);
         if (actor) actor.action = mergeAction(actor.action, input);
     }
+    /** Remove an actor, model state and cached registration/GLB; publish a mesh tombstone when needed. */
     remove(id) {
         if (!this.data.actors.has(id)) return false;
         this.physics.removeActor(id);
         this.data.removeActor(id);
         return true;
     }
+    /** Remove a session actor and call the injected disconnect callback for its connection. */
     kick(id, disconnect) {
         if (!this.data.actors.has(id) && !this.data.clients.has(id)) return false;
         this.remove(id);
         disconnect(id);
         return true;
     }
+    /** Record a session address ban and disconnect matching non-admin clients, including pending registrations. */
     ban(id, disconnect) {
         const address = this.data.actors.get(id)?.address || this.data.clients.get(id)?.connection.address;
         if (!address) return null;
@@ -84,6 +113,7 @@ class ActorManager {
         for (const clientId of ids) this.kick(clientId, disconnect);
         return address;
     }
+    /** Delete an address ban from this session and return whether one existed. */
     unban(address) { return this.bans.delete(address); }
 }
 module.exports = { ActorManager };

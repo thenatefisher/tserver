@@ -1,3 +1,10 @@
+/**
+ * Load the definitive TBN interface contract and compile JSON Schema validators.
+ * Inputs: Framework schema JSON files and non-schema physical/network invariants.
+ * Outputs: Validation functions and schema-derived interface constants.
+ * Side effects: Loads/caches files and compiles Ajv validators once at module initialization.
+ * Coupling: All protocol boundaries depend on this adapter; behavior still lives in implementation modules.
+ */
 const Ajv = require('ajv');
 const path = require('node:path');
 const schemaRoot = path.resolve(__dirname, '../../tbn/schemas');
@@ -8,6 +15,7 @@ const invariants = require('../../tbn/docs/invariants.json');
 const ajv = new Ajv({ allErrors: true, strict: false, strictNumbers: true });
 ajv.addSchema(schemas.mesh, 'mesh.schema.json');
 const validators = Object.fromEntries(Object.entries(schemas).map(([name, schema]) => [name, ajv.compile(schema)]));
+/** Validate a named protocol payload in place; return it or throw without changing it. */
 function validate(name, value) {
     const validator = validators[name];
     if (!validator) throw new Error(`Unknown contract: ${name}`);

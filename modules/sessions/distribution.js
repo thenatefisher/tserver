@@ -1,6 +1,14 @@
-// Preserve existing payload events; add version envelopes for explicit receipt tracking.
+/**
+ * Send session resources while preserving existing client payload event shapes.
+ * Inputs: Session data store, recipient socket and resource keys/retry policy.
+ * Outputs: Payload events followed by resource/version envelopes and manifests.
+ * Side effects: Emits socket events and records versions actually sent; does not assume receipt.
+ * Coupling: SessionData owns versions/subscriptions; ClientSockets invokes delivery at appropriate events.
+ */
 class DataDistribution {
+    /** Retain a session reference; no data or sockets are changed during construction. */
     constructor(session) { this.session = session; }
+    /** Emit one payload and version envelope, recording the send but not assuming receipt. */
     send(socket, resource) {
         const data = this.session.data;
         const entry = data.resources.get(resource);
@@ -20,13 +28,16 @@ class DataDistribution {
         socket.emit('data_version', version);
         return true;
     }
+    /** Send all currently pending subscribed resources, optionally retrying unacknowledged versions. */
     flush(socket, retry = false) {
         for (const resource of this.session.data.pending(socket.id, retry)) this.send(socket, resource);
     }
+    /** Subscribe to and send an available resource to one socket. */
     request(socket, resource) {
         if (!this.session.data.subscribe(socket.id, resource)) return false;
         return this.send(socket, resource);
     }
+    /** Emit this socket’s receipt manifest; does not expose resource payloads or other clients. */
     manifest(socket) { socket.emit('data_manifest', this.session.data.manifest(socket.id)); }
 }
 module.exports = { DataDistribution };

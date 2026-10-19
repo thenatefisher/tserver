@@ -1,3 +1,10 @@
+/**
+ * Decode and validate binary GLB solids and extract collision geometry.
+ * Inputs: Base64 GLB strings or decoded GLB buffers.
+ * Outputs: Validated bounds, enclosed volume, triangle count and transformed indexed geometry.
+ * Side effects: Allocates decoded buffers and geometry; throws on invalid assets.
+ * Coupling: contracts supplies budgets; geometry implements transforms and volume arithmetic.
+ */
 const { identity, multiply, compose, transform, signedVolume: triangleVolume } = require('./geometry');
 const { invariants } = require('../contracts');
 const MAX_GLB_BYTES = invariants.geometryLimits.maxGlbBytes;
@@ -5,12 +12,14 @@ const MAX_TRIANGLES = invariants.geometryLimits.maxPolygonTriangles;
 const GLB_MAGIC = 0x46546c67, JSON_CHUNK = 0x4e4f534a, BIN_CHUNK = 0x004e4942;
 const COMPONENTS = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
 const TYPES = { 5121: ['readUInt8', 1], 5123: ['readUInt16LE', 2], 5125: ['readUInt32LE', 4], 5126: ['readFloatLE', 4] };
+/** Decode bounded base64 input into a new Buffer; reject invalid encoding. */
 function decodeGlb(value) {
     if (typeof value !== 'string') throw new Error('mesh.glb must be a base64 string');
     const base64 = value.replace(/^data:.*?;base64,/, '');
     if (base64.length > Math.ceil(MAX_GLB_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) throw new Error('Invalid or oversized base64 GLB');
     return Buffer.from(base64, 'base64');
 }
+/** Validate GLB framing and return parsed JSON plus a binary-buffer view. */
 function parseContainer(buffer) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 20 || buffer.length > MAX_GLB_BYTES) throw new Error('Invalid GLB byte length');
     if (buffer.readUInt32LE(0) !== GLB_MAGIC || !invariants.geometryLimits.supportedGlbVersions.includes(buffer.readUInt32LE(4))) throw new Error('Unsupported GLB version');
@@ -35,6 +44,7 @@ function parseContainer(buffer) {
     if (extensions.includes('KHR_draco_mesh_compression') || extensions.includes('EXT_meshopt_compression')) throw new Error('Compressed geometry is unsupported');
     return { json, binary };
 }
+/** Read dense/sparse geometry accessors into a numeric array; reject invalid offsets/types. */
 function accessorValues(json, binary, index, expectedType) {
     const accessor = json.accessors?.[index];
     if (!accessor || accessor.type !== expectedType || !Number.isSafeInteger(accessor.count) || accessor.count < 1) throw new Error('Invalid geometry accessor');
@@ -43,6 +53,7 @@ function accessorValues(json, binary, index, expectedType) {
     const [read, bytes] = type;
     if (accessor.count * components * bytes > MAX_GLB_BYTES) throw new Error('Decoded accessor exceeds geometry memory budget');
     const values = new Array(accessor.count * components).fill(0);
+    /** Read a bounded strided buffer view; returns values without modifying binary storage. */
     function readView(viewIndex, localOffset, count, width, method, elementBytes, strideOverride) {
         const view = json.bufferViews?.[viewIndex];
         if (!view || (view.buffer || 0) !== 0) throw new Error('Invalid GLB buffer view');
@@ -70,12 +81,15 @@ function accessorValues(json, binary, index, expectedType) {
     }
     return values;
 }
+/** Validate transformed closed geometry and return volume, bounds and indexed collision surfaces. */
 function validateGlb(input) {
     const { json, binary } = parseContainer(input);
     const scene = json.scenes?.[json.scene ?? 0];
     if (!scene || !Array.isArray(scene.nodes)) throw new Error('GLB has no default scene');
     const bounds = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
     let triangles = 0, volume = 0, visits = 0;
+    const collisionVertices = [], collisionIndices = [], vertexIds = new Map();
+    /** Traverse scene nodes recursively, accumulating geometry/volume; reject cycles and bad transforms. */
     function visit(index, parent, ancestors) {
         if (ancestors.has(index) || ++visits > 10000) throw new Error('Invalid or excessive GLB node hierarchy');
         const node = json.nodes?.[index];
@@ -92,6 +106,7 @@ function validateGlb(input) {
             local = compose(translation, rotation, scale);
         }
         const world = multiply(parent, local);
+        const firstCollisionIndex = collisionIndices.length;
         let signedVolume = 0;
         const edges = new Map();
         if (node.mesh !== undefined) {
@@ -111,6 +126,12 @@ function validateGlb(input) {
                     const ids = mode === 4 ? indices.slice(i * 3, i * 3 + 3) : mode === 6 ? [indices[0], indices[i + 1], indices[i + 2]] : i % 2 ? [indices[i + 1], indices[i], indices[i + 2]] : indices.slice(i, i + 3);
                     const [a, b, c] = ids.map(id => vertices[id]);
                     signedVolume += triangleVolume(a, b, c);
+                    // Reuse transformed vertices so physics keeps a compact indexed solid.
+                    for (const vertex of [a, b, c]) {
+                        const key = `${vertex.x},${vertex.y},${vertex.z}`;
+                        if (!vertexIds.has(key)) { vertexIds.set(key, collisionVertices.length); collisionVertices.push({ ...vertex }); }
+                        collisionIndices.push(vertexIds.get(key));
+                    }
                     const keys = [a, b, c].map(v => [v.x, v.y, v.z].map(n => n.toFixed(6)).join(','));
                     for (let edge = 0; edge < 3; edge++) {
                         const start = keys[edge], end = keys[(edge + 1) % 3];
@@ -127,6 +148,11 @@ function validateGlb(input) {
             }
         }
         if ([...edges.values()].some(edge => edge.count !== 2 || edge.balance !== 0)) throw new Error('GLB volume requires a closed consistently wound mesh');
+        // Closed meshes may arrive with globally inward winding or mirrored
+        // node transforms. Orient stored physics faces outward for contact culling.
+        if (signedVolume < 0) for (let i = firstCollisionIndex; i < collisionIndices.length; i += 3) {
+            [collisionIndices[i + 1], collisionIndices[i + 2]] = [collisionIndices[i + 2], collisionIndices[i + 1]];
+        }
         volume += Math.abs(signedVolume);
         const next = new Set(ancestors).add(index);
         for (const child of node.children || []) visit(child, world, next);
@@ -137,6 +163,6 @@ function validateGlb(input) {
     for (const axis of ['x', 'y', 'z']) if (bounds.min[axis] < limits.min[axis] - 1e-6 || bounds.max[axis] > limits.max[axis] + 1e-6) throw new Error('Transformed GLB exceeds actor local cube');
     if (Math.abs(bounds.min.z - invariants.coordinates.grounding.contactPlaneZ) > invariants.coordinates.grounding.maxPlaneDeviation) throw new Error('GLB must be grounded at body Z zero');
     if (volume + 1e-6 < invariants.geometryLimits.minMeshVolumeCubicMeters) throw new Error('GLB mesh volume is below the server minimum');
-    return { triangles, json, bounds, volume };
+    return { triangles, json, bounds, volume, geometry: { vertices: collisionVertices, indices: collisionIndices } };
 }
 module.exports = { MAX_GLB_BYTES, MAX_TRIANGLES, decodeGlb, validateGlb };

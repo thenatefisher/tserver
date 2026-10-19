@@ -1,6 +1,14 @@
+/**
+ * Manage client admission, session membership and routing of socket commands.
+ * Inputs: Socket.IO connections, session registry, logger and optional admin token.
+ * Outputs: Session-scoped payloads, rejection events, manifests and moderation effects.
+ * Side effects: Installs/removes handlers, changes room membership and mutates session state through managers.
+ * Coupling: ActorManager handles actors; DataDistribution handles versioned delivery; sessions own physics.
+ */
 const { DataDistribution } = require('../sessions/distribution');
 
 class ClientSockets {
+    /** Own connection maps and install session/Socket.IO lifecycle listeners without creating actors. */
     constructor({ io, sessions, logger, adminToken }) {
         Object.assign(this, { io, sessions, logger, adminToken });
         this.connections = new Map(); this.bindings = new Map();
@@ -11,10 +19,14 @@ class ClientSockets {
         for (const session of sessions.sessions.values()) this.bindSession(session);
         io.on('connection', this.onConnection);
     }
+    /** Install session publication handlers and a per-session distribution adapter. */
     bindSession(session) {
         const distribution = new DataDistribution(session);
+        /** Select live connection records belonging to this session without copying payloads. */
         const clients = () => [...this.connections.values()].filter(client => client.session === session);
+        /** Push updated subscribed resources to session members; records sends, not receipts. */
         const changed = () => { for (const client of clients()) distribution.flush(client.socket); };
+        /** Publish telemetry/manifests and retry opted-in unacknowledged data once per second. */
         const metrics = () => {
             const payload = session.metrics(id => this.io.sockets.sockets.get(id)?.conn.transport.name);
             for (const client of clients()) {
@@ -27,6 +39,7 @@ class ClientSockets {
         session.on('state', changed); session.on('data_changed', changed); session.on('metrics', metrics);
         this.bindings.set(session.id, { distribution, changed, metrics });
     }
+    /** Disconnect session members and remove publication handlers before disposal. */
     unbindSession(session) {
         for (const client of [...this.connections.values()]) if (client.session === session) {
             client.socket.emit('session_closed', { sessionId: session.id });
@@ -38,6 +51,7 @@ class ClientSockets {
             this.bindings.delete(session.id);
         }
     }
+    /** Remove a connection’s receipts, actor and room membership from its previous session. */
     detach(client) {
         const { session, socket } = client;
         if (!session) return;
@@ -50,6 +64,7 @@ class ClientSockets {
         socket.leave(`session:${session.id}`);
         client.session = null;
     }
+    /** Check admission first, then attach/switch session and deliver its initial versioned resources. */
     join(client, sessionId, selectOnly = false) {
         const session = this.sessions.get(sessionId);
         if (!session) throw new Error('Unknown game session');
@@ -68,7 +83,9 @@ class ClientSockets {
         distribution.flush(socket); distribution.manifest(socket);
         session.emit('data_changed');
     }
+    /** Emit a payload only to the specified session room. */
     broadcast(session, event, payload) { this.io.to(`session:${session.id}`).emit(event, payload); }
+    /** Install guarded protocol handlers and select the initial session for a newly admitted socket. */
     connect(socket) {
         const auth = socket.handshake.auth || {};
         if (auth.role === 'admin' && this.adminToken && auth.adminToken !== this.adminToken) {
@@ -81,6 +98,7 @@ class ClientSockets {
         socket.onAny((event, ...args) => this.logger.debug('socket.receive', { id: socket.id, event, args }));
         socket.on('error', error => this.logger.debug('socket.error', { id: socket.id, error }));
         socket.conn.on('upgrade', transport => this.logger.debug('socket.upgrade', { id: socket.id, transport: transport.name }));
+        /** Register a synchronous command handler and translate thrown errors into rejection events. */
         const guard = (event, handler, errorEvent = 'request_rejected') => socket.on(event, (...args) => {
             try { handler(...args); }
             catch (error) {
@@ -88,7 +106,9 @@ class ClientSockets {
                 socket.emit(errorEvent, { event, reason: error.message });
             }
         });
+        /** Resolve the current session distributor after any membership switch. */
         const distribution = () => this.bindings.get(client.session.id).distribution;
+        /** Reject privileged commands unless this connection passed admin admission. */
         const requireAdmin = () => { if (!client.admin) throw new Error('Admin role required'); };
         guard('join_session', id => this.join(client, typeof id === 'string' ? id : id?.sessionId), 'session_rejected');
         guard('request_sessions', () => socket.emit('sessions_list', this.sessions.list()));
@@ -99,7 +119,7 @@ class ClientSockets {
             let descriptor;
             try { descriptor = client.session.actors.register(socket.id, input); }
             catch (error) { if (!existed) client.session.actors.remove(socket.id); throw error; }
-            client.registration = { descriptor, geometry: client.session.data.meshes.get(socket.id), physicsProfile: { ...client.session.data.actors.get(socket.id).physicsProfile } };
+            client.registration = { descriptor, geometry: client.session.data.meshes.get(socket.id), physicsProfile: { ...client.session.data.actors.get(socket.id).physicsProfile }, body: client.session.data.actors.get(socket.id).body };
             client.session.snapshot();
             socket.emit('registration_accepted', descriptor);
             if (!existed) socket.emit('session_joined', { sessionId: client.session.id, name: client.session.name });
@@ -128,6 +148,7 @@ class ClientSockets {
             requireAdmin();
             socket.emit('sync_manifest', { sessionId: client.session.id, clients: [...client.session.data.clients.keys()].map(id => ({ id, ...client.session.data.manifest(id) })) });
         });
+        /** Close a targeted socket; normal disconnect handlers remove its session membership. */
         const disconnect = id => this.io.sockets.sockets.get(id)?.disconnect(true);
         guard('admin_kick_actor', id => {
             requireAdmin();
@@ -156,6 +177,7 @@ class ClientSockets {
         try { this.join(client, auth.sessionId || 'default', true); }
         catch (error) { socket.emit('session_rejected', { reason: error.message }); socket.disconnect(true); }
     }
+    /** Release owned listeners, sockets, timers and session state; does not delete external files. */
     close() {
         this.io.off('connection', this.onConnection);
         this.sessions.off('created', this.onCreated); this.sessions.off('removing', this.onRemoving);

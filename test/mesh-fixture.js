@@ -1,6 +1,7 @@
-module.exports = function meshFixture({ scale = 1, translation = [0, 0, 0] } = {}) {
+module.exports = function meshFixture({ scale = 1, translation = [0, 0, 0], reverseWinding = false } = {}) {
     const vertices = [-0.5,-0.5,0, 0.5,-0.5,0, 0.5,0.5,0, -0.5,0.5,0, -0.5,-0.5,1, 0.5,-0.5,1, 0.5,0.5,1, -0.5,0.5,1];
     const indices = [0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,3,7,6,3,6,2,0,4,7,0,7,3,1,2,6,1,6,5];
+    if (reverseWinding) for (let i = 0; i < indices.length; i += 3) [indices[i + 1], indices[i + 2]] = [indices[i + 2], indices[i + 1]];
     const binary = Buffer.alloc(vertices.length * 4 + indices.length * 2);
     vertices.forEach((v, i) => binary.writeFloatLE(v, i * 4));
     indices.forEach((v, i) => binary.writeUInt16LE(v, vertices.length * 4 + i * 2));

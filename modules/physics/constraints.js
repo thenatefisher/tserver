@@ -1,4 +1,12 @@
+/**
+ * Apply server speed limits and world boundary constraints to a working actor.
+ * Inputs: Mutable integrated actor state, optional limits and optional scalar support height.
+ * Outputs: The same constrained actor object.
+ * Side effects: Mutates position and velocity; clears velocity along crossed world boundaries.
+ * Coupling: vector supplies clamping; solid terrain placement is handled by contacts/integration.
+ */
 const { clampVector, number } = require('./vector');
+/** Mutate the working actor to enforce speed/boundary limits and optional support height. */
 function constrain(actor, limits, height) {
     if (Number.isFinite(height) && actor.position.y <= height) {
         actor.position.y = height;

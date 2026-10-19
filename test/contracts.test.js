@@ -11,7 +11,7 @@ test('schemas define allowed registration fields and exact action payloads', () 
     validate('actor', fixture.registration());
     assert.throws(() => validate('actor', fixture.registration({ physicsProfile: { maxSpeed: 25, angularAcceleration: 4 } })), /additional properties/);
     assert.throws(() => validate('actor', fixture.registration({ name: 'x'.repeat(schemas.actor.properties.name.maxLength + 1) })), /characters/);
-    for (const bad of [{ accel: { x: 1 } }, { angularAccel: { y: 1 } }, { moment: {} }, { fire: true }, { linear: { x: 1.01 } }, { angular: { x: NaN } }]) assert.throws(() => validate('actions', bad));
+    for (const bad of [{ accel: { x: 1 } }, { angularAccel: { y: 1 } }, { moment: {} }, { fire: true }, { linear: { x: 3.01 } }, { angular: { x: NaN } }]) assert.throws(() => validate('actions', bad));
     validate('actions', { linear: { x: 1, y: 1, z: 1 }, angular: { z: -1 } });
     assert.throws(() => validate('mesh', { ...fixture(), metadata: { visualSize: { x: 1, y: 1, z: 1 }, projectileOrigins: [{ id: 'too-long-id', position: { x: 0, y: 0, z: 0 } }] } }));
 });
@@ -23,6 +23,7 @@ test('partial action components persist and physical units follow the schema', (
     session.actors.action('actor', { linear: { x: 0 } });
     assert.deepEqual(actor.action, { linear: { x: 0, y: 0.5, z: 0 }, angular: { x: 0, y: 0, z: 1 } });
     session.actors.action('actor', { linear: { x: 1, y: 0 } });
+    actor.position.y += 10; session.physics.addActor(actor);
     session.tick(); const state = session.snapshot();
     assert.ok(Math.abs(state.actors[0].velocity.x - invariants.input.standardGravityMetersPerSecondSquared / session.tickRate) < 1e-8);
     assert.ok(Math.abs(state.actors[0].rotationalRates.z - 1 / session.tickRate) < 1e-8);
@@ -38,7 +39,7 @@ test('body axes and intrinsic Euler XYZ map to world coordinates', () => {
     const forwardAfterYaw = rotateBodyToWorld({ x: 1 }, { z: Math.PI / 2, order: orientationOrder });
     assert.ok(Math.abs(forwardAfterYaw.x) < 1e-10); assert.ok(Math.abs(forwardAfterYaw.z + 1) < 1e-10);
     const actor = integrateActor({ position: { y: 10 } }, { angular: { z: 1 } }, 0.1, { gravity: 0 });
-    assert.equal(actor.rotationalRates.z, 0.1);
+    assert.ok(Math.abs(actor.rotationalRates.z - 0.1) < 1e-12);
 });
 
 test('world uses schema dimensions, half-open integer terrain, and no-data interpolation', () => {

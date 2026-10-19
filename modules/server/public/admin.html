@@ -1,3 +1,10 @@
+<!--
+  Admin dashboard document and DOM contract for admin.js.
+  Inputs: browser viewport and the locally served dashboard module.
+  Outputs: stats, session controls, client table, GLB viewport and radar containers.
+  Side effects: loads Socket.IO and admin.js, which starts the observer connection.
+  Coupling: element IDs must remain aligned with public/admin.js; imports map local Three.js assets.
+-->
 <!doctype html>
 <html lang="en">
 <head>

@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActorRegistration",
+  "description": "Schema for actor GLB mesh registration and physics capabilities profile submitted by client",
+  "type": "object",
+  "required": [
+    "name",
+    "clientType",
+    "physicsProfile",
+    "mesh"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 30
+    },
+    "clientType": {
+      "type": "string"
+    },
+    "physicsProfile": {
+      "type": "object",
+      "required": [
+        "maxSpeed"
+      ],
+      "properties": {
+        "maxSpeed": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 100.0,
+          "description": "User-selected maximum speed in m/s, chosen at build time. No current tradeoff cost."
+        }
+      },
+      "description": "Build-time user-selected actor properties. Currently only maxSpeed is selectable; no tradeoff system exists yet. Future parameters and tradeoffs require explicit schema updates.",
+      "additionalProperties": false
+    },
+    "mesh": {
+      "$ref": "mesh.schema.json"
+    }
+  }
+}

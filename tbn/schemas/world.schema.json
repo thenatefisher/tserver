@@ -1,0 +1,156 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TBN world and DTED terrain",
+  "type": "object",
+  "required": [
+    "size",
+    "terrain"
+  ],
+  "properties": {
+    "size": {
+      "type": "object",
+      "description": "World dimensions in meters: a 1 km cube. World ground plane is X/Z, elevation is +Y; distinct from the actor body frame (+X forward, +Y left, +Z up). Sent from server to client on connection.",
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "const": 1000
+        },
+        "y": {
+          "type": "number",
+          "const": 1000
+        },
+        "z": {
+          "type": "number",
+          "const": 1000
+        }
+      }
+    },
+    "terrain": {
+      "type": "object",
+      "description": "Configurable row-major DTED posts in world X/Z, with Y elevation. Index = row * columns + column; columns advance +X, rows advance +Z. Spacing is in meters; integer elevation samples are in 0.1 m units. Half-open sampling excludes the far world boundary: columns = ceil(width / spacing.x), rows = ceil(depth / spacing.z). Validate those relationships and depthMap.length = rows * columns separately from JSON Schema.",
+      "required": [
+        "type",
+        "width",
+        "depth",
+        "columns",
+        "rows",
+        "origin",
+        "spacing",
+        "elevationScale",
+        "depthMap"
+      ],
+      "properties": {
+        "type": {
+          "const": "dted"
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "X extent in meters, matching world size.x for full-world terrain."
+        },
+        "depth": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Z extent in meters, matching world size.z for full-world terrain."
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "ceil(width / spacing.x); 4000 for width 1000 m at 0.25 m spacing."
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "ceil(depth / spacing.z); 4000 for depth 1000 m at 0.25 m spacing."
+        },
+        "origin": {
+          "type": "object",
+          "required": [
+            "x",
+            "z"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            }
+          }
+        },
+        "spacing": {
+          "type": "object",
+          "required": [
+            "x",
+            "z"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Configurable distance between adjacent columns, meters."
+            },
+            "z": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Configurable distance between adjacent rows, meters."
+            }
+          }
+        },
+        "elevationScale": {
+          "type": "number",
+          "const": 0.1,
+          "description": "Meters per stored elevation unit. World Y = sample * elevationScale; 123 means 12.3 m."
+        },
+        "noDataValue": {
+          "type": "integer",
+          "description": "Optional missing-data sentinel; detect before converting elevation or interpolating."
+        },
+        "depthMap": {
+          "type": "array",
+          "description": "Flat row-major integer elevation array in 0.1 m units. Exactly rows * columns entries. Post world coordinates: X = origin.x + column * spacing.x, Z = origin.z + row * spacing.z, Y = depthMap[row * columns + column] * elevationScale. A 4000 by 4000 grid contains 16000000 entries.",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "size": {
+        "x": 1000,
+        "y": 1000,
+        "z": 1000
+      },
+      "terrain": {
+        "type": "dted",
+        "width": 1000,
+        "depth": 1000,
+        "columns": 1,
+        "rows": 1,
+        "origin": {
+          "x": -500,
+          "z": -500
+        },
+        "spacing": {
+          "x": 1000,
+          "z": 1000
+        },
+        "elevationScale": 0.1,
+        "depthMap": [
+          123
+        ]
+      }
+    }
+  ],
+  "description": "World snapshot sent by the server once on each client connection and again whenever the client requests it. Includes size and terrain; not repeated in the approximately 15 Hz game-state stream."
+}

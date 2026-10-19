@@ -1,0 +1,172 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TBN server game state",
+  "description": "Authoritative full snapshot sent to every client approximately 15 times per second. Contains all actors including the receiving player, all projectiles currently in flight, and hit events since the previous broadcast. World terrain and GLB assets are delivered separately.",
+  "type": "object",
+  "required": [
+    "actors",
+    "projectiles",
+    "hitEvents"
+  ],
+  "properties": {
+    "actors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/actor"
+      }
+    },
+    "projectiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/projectile"
+      },
+      "description": "Full current in-flight projectile set; absence means the projectile is no longer in flight."
+    },
+    "hitEvents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/hitEvent"
+      },
+      "description": "Hit events accumulated since the previous broadcast; empty when none occurred. Deduplicate by event id. These are transient events, not historical hits repeated every snapshot."
+    }
+  },
+  "definitions": {
+    "vector3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      }
+    },
+    "orientation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z",
+        "order"
+      ],
+      "description": "Euler angles in radians, explicit XYZ order, describing body-to-world orientation. Body axes: +X forward, +Y left, +Z up; world axes: +X east, +Y up, +Z south. At zero body heading the basis conversion is (x,y,z) -> (x,z,-y). Angles apply about body axes (X roll, Y pitch, Z yaw) before that basis conversion.",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "order": {
+          "const": "XYZ"
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "health",
+        "position",
+        "orientation",
+        "velocity"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "health": {
+          "type": "number",
+          "minimum": 0
+        },
+        "position": {
+          "$ref": "#/definitions/vector3",
+          "description": "World-space position in meters; world +Y is elevation."
+        },
+        "orientation": {
+          "$ref": "#/definitions/orientation"
+        },
+        "velocity": {
+          "$ref": "#/definitions/vector3",
+          "description": "World-space velocity in meters per second."
+        }
+      },
+      "description": "Public state for an actor, including the receiving player. Additional public fields may be supplied; never include private actor data."
+    },
+    "projectile": {
+      "type": "object",
+      "required": [
+        "id",
+        "position",
+        "velocity"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/definitions/vector3",
+          "description": "World-space position in meters."
+        },
+        "velocity": {
+          "$ref": "#/definitions/vector3",
+          "description": "World-space velocity in meters per second."
+        }
+      }
+    },
+    "hitEvent": {
+      "type": "object",
+      "required": [
+        "id",
+        "targetId",
+        "sourceId",
+        "damage",
+        "remainingHealth",
+        "hitLocation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable event ID for deduplication, including cached snapshot replay."
+        },
+        "targetId": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "damage": {
+          "type": "number",
+          "minimum": 0
+        },
+        "remainingHealth": {
+          "type": "number",
+          "minimum": 0
+        },
+        "hitLocation": {
+          "$ref": "#/definitions/vector3",
+          "description": "World-space impact position in meters."
+        }
+      }
+    }
+  }
+}

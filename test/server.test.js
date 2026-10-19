@@ -69,7 +69,7 @@ test('HTTP, UDP discovery, sessions, legacy events, and data receipts work end t
     player.emit('register_actor', meshFixture.registration({ name: 'Player' }));
     assert.equal((await accepted).triangles, 12);
     const rotated = event(player, 'state', snapshot => snapshot.actors.some(a => a.id === player.id && a.rotationalRates.z > 0));
-    player.emit('action', { angular: { z: 1 } }); await rotated;
+    player.emit('action', { linear: { z: 5 }, angular: { z: 1 } }); await rotated;
     const meshReceived = event(admin, 'mesh_geometry');
     admin.emit('request_mesh', player.id);
     assert.equal((await meshReceived).glb, meshFixture().glb);

@@ -1,18 +1,29 @@
+/**
+ * Run the browser admin dashboard, session selector, radar and GLB viewer.
+ * Inputs: DOM elements, Socket.IO metrics/state/assets, local token storage and user controls.
+ * Outputs: Rendered client statistics, cached meshes, scene previews and admin requests.
+ * Side effects: Updates DOM/sessionStorage, maintains a socket and WebGL animation, emits control/receipt events.
+ * Coupling: Served public HTML provides IDs; Socket.IO and local Three.js modules provide transport/rendering.
+ */
+/** Resolve a required dashboard element by ID; returns the live DOM node. */
 const $ = id => document.getElementById(id);
 const socket = io({ auth: { role: 'admin', sync: true, adminToken: sessionStorage.getItem('tbnAdminToken') || '' } });
 let clients = [], manifest = {}, selectedId = null, map = null, state = { actors: [] };
 let viewerPromise, model, scene, camera, renderer, controls, initialCamera;
 let meshVersion = 0;
+/** Format elapsed seconds for display without changing the metric value. */
 const duration = seconds => {
     const s = Math.max(0, Math.floor(seconds));
     return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 };
+/** Prepend a timestamped activity message and bound the retained browser DOM log. */
 function log(message) {
     const entry = document.createElement('div');
     entry.textContent = `${new Date().toLocaleTimeString()} · ${message}`;
     $('activity').prepend(entry);
     while ($('activity').children.length > 80) $('activity').lastChild.remove();
 }
+/** Dispose displayed GPU resources, invalidate pending loads and reset viewer DOM. */
 function clearMesh(message) {
     meshVersion++;
     if (model) {
@@ -32,12 +43,14 @@ function clearMesh(message) {
     $('details').textContent = '';
     $('reset-view').disabled = true;
 }
+/** Select an actor, clear its previous preview and request its geometry over the socket. */
 function showMesh(id) {
     selectedId = id;
     clearMesh('Loading actor mesh…');
     $('selected').textContent = clients.find(client => client.id === id)?.name || id;
     socket.emit('request_mesh', id);
 }
+/** Replace the client table DOM from current connection metrics and attach action handlers. */
 function renderClients() {
     const body = $('clients');
     body.replaceChildren();
@@ -135,6 +148,7 @@ socket.on('map_data', data => { map = data; });
 socket.on('state', data => { state = data; });
 $('reset-targets').addEventListener('click', () => { socket.emit('admin_reset_targets'); log('Practice targets reset'); });
 
+/** Load local Three.js modules, create GPU/resize/animation resources and return the GLB loader. */
 async function setupViewer() {
     const THREE = await import('three');
     const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
@@ -191,12 +205,14 @@ socket.on('mesh_geometry', async data => {
         if (version === meshVersion) { clearMesh(`Unable to display mesh: ${error.message}`); log(`Mesh viewer error: ${error.message}`); }
     }
 });
+/** Restore saved viewer camera/target positions; changes rendering state only. */
 function resetCamera() {
     if (!initialCamera) return;
     camera.position.copy(initialCamera.position); controls.target.copy(initialCamera.center); controls.update();
 }
 $('reset-view').addEventListener('click', resetCamera);
 const ctx = $('radar').getContext('2d');
+/** Draw current world actors/targets and schedule the next browser animation frame. */
 function drawRadar() {
     ctx.clearRect(0, 0, 500, 500);
     ctx.strokeStyle = '#25344b';

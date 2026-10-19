@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActorMeshRegistration",
+  "type": "object",
+  "required": [
+    "glb",
+    "metadata"
+  ],
+  "properties": {
+    "glb": {
+      "type": "string",
+      "description": "Uncompressed GLB, normally sent as base64"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "visualSize",
+        "projectileOrigins"
+      ],
+      "properties": {
+        "projectileOrigins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "position"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 8
+              },
+              "position": {
+                "$ref": "#/definitions/projectilePosition"
+              },
+              "direction": {
+                "$ref": "#/definitions/vector3"
+              }
+            }
+          }
+        },
+        "visualSize": {
+          "type": "object",
+          "description": "Actual transformed GLB bounding-box dimensions in meters; each dimension is positive and at most 3 m.",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "properties": {
+            "x": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 3
+            },
+            "y": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 3
+            },
+            "z": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 3
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "vector3": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      }
+    },
+    "projectilePosition": {
+      "type": "object",
+      "description": "Meters relative to the actor GLB root origin: +X forward, +Y left, +Z up. May lie anywhere in the allowed 3 m cube, independent of actual mesh dimensions.",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -1.5,
+          "maximum": 1.5
+        },
+        "y": {
+          "type": "number",
+          "minimum": -1.5,
+          "maximum": 1.5
+        },
+        "z": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        }
+      }
+    }
+  },
+  "description": "Actor mesh in a 1000 m cube world. All transformed GLB vertices must fit the ground-aligned 3 m actor-local cube: X/Y [-1.5, 1.5], Z [0, 3]. Validate decoded GLB geometry separately; JSON Schema validates declared metadata only. The server enforces a minimum mesh volume of 1 cubic meter and a fixed 2 m cube hitbox centered at the actor origin (X/Y/Z [-1, 1]). These are server-enforced geometry rules, not client-selectable metadata. JSON Schema cannot enforce volume computed from binary GLB geometry."
+}

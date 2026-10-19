@@ -19,14 +19,14 @@ modules/
 test/            Unit, schema and network integration tests
 docs/            Architecture and protocol notes
 node_modules/    Installed dependencies
-tbn/             Existing external framework contract checkout
+tbn/             Versioned framework schemas, invariants, relay and client guidance
 ```
 
-`tbn` is an existing Git framework reference, retained at its required location and left unchanged. It is not a second server implementation. The server requires its schemas and invariant file at runtime.
+`tbn` is tracked directly in this repository so client contracts and their updates are committed with the implementation. It is not a second server implementation. The server requires its schemas and invariant file at runtime.
 
 - `SessionManager` creates, lists, starts and removes sessions.
 - `GameSession` owns a `SessionData`, `ActorManager`, and distinct `PhysicsModel`, plus simulation, broadcast and metrics timers. No actor, mesh, terrain, ban, action or receipt registry is global.
-- `SessionData` owns connected-client records, actor records, registered descriptors, GLB buffers, terrain and the latest public snapshot. Physics owns the authoritative moving state; session ticks copy motion back into actor records. Public snapshots contain only public fields.
+- `SessionData` owns connected-client records, actor records, registered descriptors, GLB buffers, immutable session terrain and the latest public snapshot. Physics owns the authoritative moving state; session ticks copy motion back into actor records. Public snapshots contain only public fields.
 - `ClientSockets` owns connections and session membership. It validates admission, routes events, restricts moderation to observers with the admin role, and delegates game changes. Socket.IO rooms isolate event delivery. Session removal disconnects its clients and clears its timers and data.
 - `DataDistribution` delivers versioned resources without putting terrain or mesh bytes in the moving-state stream.
 - `SessionDiscovery` advertises currently available sessions through the HTTP endpoints and UDP replies.
@@ -47,7 +47,7 @@ Where the schemas contain executable constraints, they take precedence over dupl
 
 The former server contract is intentionally superseded:
 
-- `linear` is per-axis acceleration in g and `angular` is per-axis acceleration in rad/s². `accel`, `angularAccel`, `moment` and `fire` are rejected. Diagonal commands are not normalized to unit magnitude; each axis has its own schema range.
+- `linear` is per-axis acceleration in g, with X/Y/Z limits ±3/±1/±5; `angular` is per-axis acceleration in rad/s² with limits ±1. `accel`, `angularAccel`, `moment` and `fire` are rejected. Diagonal commands are not normalized to unit magnitude; each axis has its own schema range.
 - Missing vectors and components retain previous commands. Explicit zeros clear them. Invalid actions leave previous commands intact.
 - `physicsProfile` requires `maxSpeed`; acceleration, angular acceleration, armor and cooling are not selectable fields.
 - Body coordinates are +X forward, +Y left, +Z up. World coordinates remain +Y up. Orientation is body Euler radians in explicit XYZ order.
@@ -111,25 +111,19 @@ socket.on('data_version', version => {
 
 ## Physics instance and model
 
-Every session constructs a new physics model through `physicsFactory(environment)`. The model owns its actor and projectile arrays and can be replaced for tests or another engine. Submodules separate action merging, vectors, body rotation, forces, integration and constraints.
+Every session creates a new immutable `TerrainModel` and a distinct `PhysicsModel`. Default worlds use a new random procedural seed; supply a seed for repeatable generation. The schema-defined DTED grid is cloned and deeply frozen, and its world-wrapper reference cannot be replaced during the session. Practice targets can be reset without changing that grid or its physics instance.
 
-For linear input, apply intrinsic body Euler XYZ, then the zero-heading basis conversion `(x,y,z) -> (x,z,-y)`. Multiply linear components by standard gravity from the invariants before rotating to world coordinates; add world gravity. Angular components already have physical units and are integrated about the body Euler axes. This is a simple Euler kinematic model rather than a rigid-body torque/inertia solver.
+Every registered GLB supplies a closed indexed collision mesh in body coordinates. All actors use the session's uniform density (default one mass unit per cubic metre). Mass is enclosed GLB volume times density. The approximate center of mass is the centroid of the transformed visual bounds; a box inertia tensor is retained for future response extensions. GLB roots need not coincide with their COM. Physics advances the COM and derives the root pose from the newly rotated COM offset. Public position/velocity remain at the mesh root; COM velocity and collision geometry remain private.
 
-```text
-world acceleration = bodyToWorld(linear * standardGravity) + gravity
-velocity1 = velocity0 + acceleration * dt
-position1 = position0 + velocity0 * dt + acceleration * dt² / 2
-rotationalRates1 = rotationalRates0 + angularAcceleration * dt
-orientation1 = orientation0 + constrainedRotationalRates1 * dt
-```
+`linear` commands are continuous accelerations: forward/back body X supports ±3 g, sideways Y ±1 g, and vertical Z ±5 g. Angular components remain ±1 rad/s². Inputs use the shared schema, and omitted components retain their previous values. A positive vertical pulse above 1 g lifts a level unit naturally; there is no special jump impulse or cooldown. Holding thrust continues accelerating, and explicitly clearing it restores gravity-driven flight.
 
-Ground friction opposes predicted horizontal velocity; angular friction opposes predicted rotational motion. Friction is capped so it cannot reverse a stationary actor or overshoot through zero. Ground height is bilinearly sampled at the new position, ignores no-data sentinels and applies the schema elevation scale. Contact clears downward velocity. Speed limits and world bounds are applied to authoritative model state; hitting a horizontal boundary clears its corresponding velocity. Position integration uses pre-limit velocity, so this remains an approximate fixed-step integrator.
+During terrain contact, a tangent frame is built from the surface normal and rotated forward axis. Lateral motion is constrained to zero, all ground spin is resisted, and forward/backward rolling experiences a much smaller deceleration. Grounded angular commands therefore do not provide stationary turning or wheel steering. Airborne actors accept all linear/angular commands. Landing resolves penetration, removes into-surface motion and reapplies ground traction.
 
-Terrain spacing is configurable and is not hardcoded as a client contract. The default runtime policy uses 10 metre posts. Columns and rows use half-open `ceil(extent / spacing)` semantics. The sampler clamps at outer posts, and returns NaN when no valid sample contributes.
+Terrain contact tests transformed GLB vertices, face centroids, edge midpoints and terrain posts inside projected faces, rather than clamping the origin or using the visual box as the collider. The terrain is treated as solid below the sampled heightfield. No-data samples are excluded from height interpolation. Actors also collide with other actors: bounds are a broad-phase test, followed by solid containment/surface-intersection checks. Contact response uses mass-weighted box-axis separation and inelastic normal impulses.
 
-GLB validation reads embedded binary accessors and node transforms; it checks actual transformed bounds, declared visual-size agreement, the invariant byte/triangle budgets and ground-aligned cube. Minimum volume uses signed tetrahedral volume on closed, consistently wound mesh surfaces. Malformed, open, inconsistently wound, compressed or unsupported position accessor formats are rejected explicitly. This is not a general-purpose glTF conformance validator or a solver for overlapping solid unions.
+The engine advances synchronized, bounded substeps to reduce contact tunneling. This remains an approximate discrete contact solver: it does not compute general rigid-body angular impulses, exact continuous collision detection, or a full wheel/suspension model. Box inertia is currently descriptive; angular inputs are accelerations, not torque. See [physics.md](physics.md) for model interfaces and numerical choices.
 
-`queueHit` validates transient hit events, includes them in the next new snapshot, and drains them. Replayed cached snapshots retain event IDs for client deduplication. Combat/projectile creation and collision response are not implemented by this refactor; there is no automatic firing input or damage calculation.
+`queueHit` validates transient hit events, includes them in the next new snapshot, and drains them. Replayed cached snapshots retain event IDs for client deduplication. Combat/projectile creation and damage calculation are separate from the solid actor contacts; there is no automatic firing input.
 
 ## Running and verification
 

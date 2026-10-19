@@ -17,7 +17,7 @@ test('sessions own independent actors, meshes, terrain, bans, and physics instan
     a.actors.action(actor.id, { linear: { x: 1 }, angular: { z: 1 } });
     a.tick(); a.snapshot();
     assert.ok(a.data.state.actors[0].position.x > initialX);
-    assert.ok(a.data.state.actors[0].rotationalRates.z > 0);
+    assert.equal(a.data.state.actors[0].rotationalRates.z, 0);
     assert.equal(b.data.actors.size, 0); assert.equal(b.data.meshes.size, 0);
     const terrainVersion = b.data.resources.get('terrain').version;
     a.resetTargets();
@@ -40,7 +40,8 @@ test('receipt manifest separates required, sent, acknowledged and invalidated da
     assert.equal(data.acknowledge('one', 'terrain', 1), true);
     assert.equal(data.manifest('one').resources.find(e => e.resource === 'terrain').needsUpdate, false);
     assert.equal(data.manifest('two').resources.find(e => e.resource === 'terrain').needsUpdate, true);
-    data.set('terrain', createMap());
+    assert.throws(() => data.set('terrain', createMap()), /immutable/);
+    data.set('terrain', { ...data.map, targets: [] });
     assert.ok(data.pending('one').includes('terrain'));
     assert.equal(data.acknowledge('one', 'terrain', 2), false);
     data.register('actor', { id: 'actor' }, { buffer: Buffer.from('mesh') });
@@ -75,7 +76,7 @@ test('physics clamps authoritative model positions and friction never reverses m
 });
 
 test('terrain grids and height samples are stable and finite', () => {
-    const map = createMap();
+    const map = createMap({ seed: 0 });
     assert.equal(map.terrain.depthMap.length, Math.ceil(map.size.x / map.terrain.spacing.x) * Math.ceil(map.size.z / map.terrain.spacing.z));
     assert.equal(sampleTerrainHeight(map.terrain, 0, 0), 2.5);
     assert.ok(Number.isFinite(sampleTerrainHeight(map.terrain, 1000, -1000)));

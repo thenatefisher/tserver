@@ -1,6 +1,14 @@
+/**
+ * Executable orchestration entry point.
+ * Inputs: environment port/token options and --debug.
+ * Outputs: a running server, or exported createGameServer for embedding.
+ * Side effects: only direct execution binds listeners and installs shutdown signals.
+ * Coupling: modules/server owns lifecycle; modules/contracts owns protocol defaults.
+ */
 const { invariants } = require('./modules/contracts');
 const { createGameServer } = require('./modules/server');
 
+/** Compose and start one server runtime; shutdown signals close its owned resources. */
 async function main() {
     const server = createGameServer({
         port: Number(process.env.PORT ?? invariants.network.serverPort),

@@ -1,0 +1,221 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "TBN System Invariants",
+  "version": "1.0.0",
+  "network": {
+    "serverPort": 4000,
+    "udpDiscoveryPort": 4001,
+    "localClientPort": 3000,
+    "udpProbeMessage": "TBN_DISCOVER",
+    "udpBeaconType": "TBN_SERVER_BEACON",
+    "httpPingEndpoint": "/ping",
+    "simulationFrequencyHz": 30,
+    "simulationTimestepSeconds": 0.03333333333,
+    "stateBroadcastFrequencyHz": 15,
+    "stateBroadcastTiming": "approximate"
+  },
+  "coordinates": {
+    "bodyFrame": {
+      "handedness": "right",
+      "forward": "+X",
+      "left": "+Y",
+      "up": "+Z",
+      "rollAxis": "+X",
+      "pitchAxis": "+Y",
+      "yawAxis": "+Z"
+    },
+    "worldFrame": {
+      "east": "+X",
+      "altitude": "+Y",
+      "south": "+Z"
+    },
+    "grounding": {
+      "maxPlaneDeviation": 0.01,
+      "minClearance": 0.0,
+      "maxClearance": 0.1,
+      "contactPlaneZ": 0.0
+    },
+    "clientRotation": {
+      "representation": "Euler",
+      "unit": "radians",
+      "order": "XYZ",
+      "xAxis": "roll",
+      "yAxis": "pitch",
+      "zAxis": "yaw"
+    },
+    "bodyToWorldAtZeroHeading": {
+      "x": "x",
+      "y": "z",
+      "z": "-y"
+    }
+  },
+  "geometryLimits": {
+    "hitbox": {
+      "x": 2,
+      "y": 2,
+      "z": 2
+    },
+    "maxVisualSize": {
+      "x": 3,
+      "y": 3,
+      "z": 3
+    },
+    "maxPolygonTriangles": 5000,
+    "maxGlbBytes": 16777216,
+    "supportedGlbVersions": [
+      2
+    ],
+    "glbEncoding": "base64",
+    "actorLocalBounds": {
+      "min": {
+        "x": -1.5,
+        "y": -1.5,
+        "z": 0
+      },
+      "max": {
+        "x": 1.5,
+        "y": 1.5,
+        "z": 3
+      }
+    },
+    "projectileOriginsUseFullActorCube": true,
+    "hitboxCenter": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "hitboxEnforcedBy": "server",
+    "minMeshVolumeCubicMeters": 1,
+    "meshVolumeEnforcedBy": "server"
+  },
+  "terrain": {
+    "schema": "tbn/schemas/world.schema.json#/properties/terrain",
+    "type": "dted",
+    "order": "row-major",
+    "columnAxis": "+X",
+    "rowAxis": "+Z",
+    "elevationAxis": "+Y",
+    "spacingUnits": "meters",
+    "resolutionConfigurable": true,
+    "elevationScale": 0.1,
+    "storedElevationType": "integer",
+    "boundaryConvention": "half-open",
+    "columnsFormula": "ceil(width / spacing.x)",
+    "rowsFormula": "ceil(depth / spacing.z)",
+    "depthMapLengthFormula": "rows * columns",
+    "example": {
+      "width": 1000,
+      "depth": 1000,
+      "spacing": {
+        "x": 0.25,
+        "z": 0.25
+      },
+      "columns": 4000,
+      "rows": 4000,
+      "sampleCount": 16000000
+    }
+  },
+  "input": {
+    "actionSchema": "tbn/schemas/actions.schema.json",
+    "coordinateFrame": "body",
+    "linearAccelerationAxes": [
+      "x",
+      "y",
+      "z"
+    ],
+    "omittedParameters": "retainPreviousValue",
+    "angularAccelerationAxes": [
+      "x",
+      "y",
+      "z"
+    ],
+    "angularAccelerationReferencePoint": "centerOfMass",
+    "linearAccelerationUnit": "g",
+    "standardGravityMetersPerSecondSquared": 9.81,
+    "angularAccelerationUnit": "rad/s^2",
+    "linearComponentLimits": {
+      "x": {
+        "minimum": -3,
+        "maximum": 3
+      },
+      "y": {
+        "minimum": -1,
+        "maximum": 1
+      },
+      "z": {
+        "minimum": -5,
+        "maximum": 5
+      }
+    },
+    "angularComponentLimits": {
+      "minimum": -1,
+      "maximum": 1
+    }
+  },
+  "actorRegistration": {
+    "schema": "tbn/schemas/actor.schema.json",
+    "attributesGeneratedAt": "buildTimeBeforeExecutionOrConnection",
+    "submissionOrder": [
+      "playerServerRegistration",
+      "actorCharacteristicsSubmission",
+      "gameSessionJoin"
+    ],
+    "attributesField": "physicsProfile",
+    "weaponHardpointsField": "mesh.metadata.projectileOrigins",
+    "hardpointCoordinateFrame": "body",
+    "meshSchema": "tbn/schemas/mesh.schema.json",
+    "requiredOnEveryConnection": true,
+    "nameMaxLength": 30,
+    "requiredPhysicsAttributes": [
+      "maxSpeed"
+    ],
+    "maxSpeedMinimum": 1,
+    "maxSpeedMaximum": 100,
+    "hardpointIdMaxLength": 8,
+    "buildArtifacts": {
+      "glbPath": "./actor.glb",
+      "jsonPath": "./actor.json",
+      "generatedAt": "buildTimeBeforeExecutionOrConnection",
+      "defaultActorWhenUndescribed": "simple stick man",
+      "embeddedGlbField": "mesh.glb",
+      "embeddedGlbEncoding": "base64",
+      "embeddedGlbMustMatchFileBytes": true
+    },
+    "propertySelection": {
+      "at": "buildTime",
+      "userSelectable": [
+        "maxSpeed"
+      ],
+      "units": {
+        "maxSpeed": "m/s"
+      },
+      "tradeoffsEnabled": false,
+      "additionalPropertiesAllowed": false,
+      "futureExpansion": "Additional parameters and tradeoffs require explicit schema and contract updates."
+    }
+  },
+  "world": {
+    "schema": "tbn/schemas/world.schema.json",
+    "sizeMeters": {
+      "x": 1000,
+      "y": 1000,
+      "z": 1000
+    },
+    "delivery": [
+      "onConnection",
+      "onRequest"
+    ]
+  },
+  "gameState": {
+    "schema": "tbn/schemas/state.schema.json",
+    "snapshot": "full",
+    "includesReceivingPlayer": true,
+    "hitEvents": "sincePreviousBroadcast",
+    "hitEventDeduplicationKey": "id",
+    "positionFrame": "world",
+    "velocityUnits": "m/s",
+    "orientationRepresentation": "Euler",
+    "orientationUnits": "radians",
+    "orientationOrder": "XYZ"
+  }
+}

@@ -1,9 +1,17 @@
+/**
+ * Construct HTTP routes and the shared Socket.IO transport without starting them.
+ * Inputs: Session registry, logger, port policy and repository asset root.
+ * Outputs: Express app, HTTP server and Socket.IO server.
+ * Side effects: Installs middleware/routes; request handling reads public assets and sends responses.
+ * Coupling: contracts supplies network defaults; socket lifecycle is wired by server/index.
+ */
 const { invariants } = require('../contracts');
 const express = require('express');
 const { createServer } = require('node:http');
 const path = require('node:path');
 const { Server } = require('socket.io');
 
+/** Build the app/transports and routes; returns unbound servers without starting timers. */
 function createHttpServer({ sessions, logger, port = invariants.network.serverPort, root = path.resolve(__dirname, '../..') }) {
     const app = express();
     const http = createServer(app);
@@ -15,6 +23,7 @@ function createHttpServer({ sessions, logger, port = invariants.network.serverPo
         res.on('finish', () => logger.debug('http.response', { method: req.method, path: req.path, status: res.statusCode, durationMs: Number(process.hrtime.bigint() - started) / 1e6 }));
         next();
     });
+    /** Build current public host/session status; uses the actual bound ephemeral port. */
     const status = () => ({ gameServer: true, port: http.address()?.port || port, serverName: 'Tank-Battle-Host', sessions: sessions.list() });
     app.get(invariants.network.httpPingEndpoint, (req, res) => res.json(status()));
     app.get('/sessions', (req, res) => res.json(sessions.list()));

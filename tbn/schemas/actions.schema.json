@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ClientAction",
+  "description": "A single client action frame. Each parameter is optional and omitted parameters retain their previous value. Body frame is right-handed: +X forward, +Y left, +Z up. Angular axes are X roll, Y pitch, Z yaw; client Euler rotations use radians in XYZ order.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "linear": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Body linear acceleration in g (9.81 m/s^2): X forward/backward [-3, 3], Y lateral [-1, 1], Z vertical [-5, 5].",
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -3,
+          "maximum": 3
+        },
+        "y": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "z": {
+          "type": "number",
+          "minimum": -5,
+          "maximum": 5
+        }
+      }
+    },
+    "angular": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Angular acceleration in the range [-1, 1] for each axis. Units are in rad/s^2.",
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -1.0,
+          "maximum": 1.0
+        },
+        "y": {
+          "type": "number",
+          "minimum": -1.0,
+          "maximum": 1.0
+        },
+        "z": {
+          "type": "number",
+          "minimum": -1.0,
+          "maximum": 1.0
+        }
+      }
+    }
+  }
+}
