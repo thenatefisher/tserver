@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ClientControlFrameV2",
-  "description": "Complete held-state normalized control effort, NOT acceleration, velocity or pose. Body +X forward, +Y left, +Z up; rotate X roll, Y pitch, Z yaw. Send at 30 Hz, increasing sequence per connection/session. Old/duplicate sequences are rejected; controls neutralize after 250 ms without a newer frame. Jump is rising-edge triggered while grounded. Unsupported controls produce no actuation.",
+  "description": "Complete held-state normalized controller inputs, not direct physical acceleration, velocity or pose assignments. Aircraft assisted-flight-v1 uses target speed/rate fractions; check protocol_info.physics.aircraftModel. Body +X forward, +Y left, +Z up; rotate X roll, Y pitch, Z yaw. Send at 30 Hz, increasing sequence per connection/session. Old/duplicate sequences are rejected; controls neutralize after 250 ms without a newer frame. Jump is rising-edge triggered while grounded. Unsupported controls produce no actuation.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -72,9 +72,10 @@
           "maximum": 1
         }
       },
-      "description": "Normalized rotation effort. Supported ground/mecha Z is steering: torque reverses during backward travel; clients must not invert it again. Airborne attitude remains body-axis rotation effort."
+      "description": "Normalized rotation effort. Supported ground/mecha Z is steering: torque reverses during backward travel; clients must not invert it again. Ground/mecha airborne attitude remains body-axis effort. Aircraft assisted-flight-v1 uses target body-rate fractions plus server wing leveling and coordinated world-vertical turning."
     },
     "brake": {
+      "description": "Normalized braking. Aircraft assisted-flight-v1 scales target speed by (1-brake); other controllers oppose travel.",
       "type": "number",
       "minimum": 0,
       "maximum": 1

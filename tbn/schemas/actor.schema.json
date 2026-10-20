@@ -39,7 +39,7 @@
             "mecha",
             "boat"
           ],
-          "description": "Server movement controller. Ground=tracked/wheeled drive; hover=stabilized terrain-relative thrusters; aircraft=powered simplified flight; mecha=ground strafe/jump; boat=buoyancy at session waterLevel. See docs/physics-controls.md for supported axes and limitations."
+          "description": "Server movement controller. Ground=tracked/wheeled drive; hover=stabilized terrain-relative thrusters; aircraft=assisted-flight-v1 target speed/body rates (check protocol_info.physics.aircraftModel); mecha=ground strafe/jump; boat=buoyancy at session waterLevel. See docs/physics-controls.md for supported axes and limitations."
         }
       },
       "description": "Build-time controller selection and maximum speed; other physics tuning is server-owned. No points budget.",

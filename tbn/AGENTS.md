@@ -100,3 +100,5 @@ Terrain presets and session selection: read [`tbn/docs/terrain-presets.md`](tbn/
 Supported ground/mecha reverse steering is handled by the server from longitudinal travel direction. Do not invert client steering again when reversing; keep ordinary left/right control mappings. Airborne yaw remains body-axis attitude effort.
 
 Aircraft clients and stability/autopilot controllers must read [`tbn/docs/aircraft-controller.md`](tbn/docs/aircraft-controller.md). It specifies mass/inertia, torque and damping, exact force equations, state reconstruction and input timing. Snapshot timestamps and measured network-delay statistics are not currently transmitted; do not invent those fields or treat resource versions as simulation ticks.
+
+Aircraft now use `assisted-flight-v1`: throttle requests target speed, rotation requests body rates, and the server supplies gravity compensation, neutral-roll leveling and coordinated bank turns. Check `protocol_info.physics.aircraftModel`; discard old lift/drag/torque compensation. See the aircraft guide for exact semantics and the built-in `/fly` reference interface.

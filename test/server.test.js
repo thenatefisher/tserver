@@ -37,7 +37,7 @@ test('HTTP, UDP discovery, sessions, legacy events, and data receipts work end t
     assert.equal(ping.port, server.http.address().port);
     assert.equal(ping.sessions.length, 2);
     assert.equal((await (await fetch(url + '/sessions')).json()).length, 2);
-    for (const asset of ['/admin', '/admin.js', '/vendor/three/build/three.module.js']) { const response = await fetch(url + asset); assert.equal(response.status, 200); await response.arrayBuffer(); }
+    for (const asset of ['/admin', '/admin.js', '/vendor/three/build/three.module.js', '/fly', '/fly.js', '/flight-actor.json']) { const response = await fetch(url + asset); assert.equal(response.status, 200); await response.arrayBuffer(); }
     assert.equal((await fetch(url + '/package.json')).status, 404, 'only public assets are exposed');
     const udp = dgram.createSocket('udp4'); t.after(() => udp.close());
     const beacon = once(udp, 'message');
@@ -254,4 +254,20 @@ test('terrain preview is admin-only, correlated to its request and does not appl
     assert.equal(candidate.requestId,17);assert.equal(candidate.preset,'plateau');assert.equal(candidate.baseVersion,version);
     assert.ok(candidate.terrain.depthMap.some(h=>h>0));assert.equal(session.terrain,grid);assert.equal(session.data.resources.get('terrain').version,version);
     assert.equal(session.data.map.terrain.preset,'flat');
+});
+
+
+test('Flight Lab asset registers through the player contract and advertises assisted flight', async t => {
+    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger,
+        sessions: [{ id: 'default', terrainPreset: 'flat' }] });
+    t.after(() => server.close()); await server.start();
+    const url = `http://127.0.0.1:${server.http.address().port}`;
+    const player = await connect(t, url);
+    assert.equal(player.protocolInfo.physics.aircraftModel, 'assisted-flight-v1');
+    const registration = await (await fetch(url + '/flight-actor.json')).json();
+    const accepted = event(player, 'registration_accepted'); player.emit('register_actor', registration);
+    assert.equal((await accepted).physicsProfile.controller, 'aircraft');
+    const state = event(player, 'state', value => value.actors.some(a => a.id === player.id && a.lastInputSequence === 0));
+    player.emit('action', frame({ move: { x: 0.5 }, sequence: 0 }));
+    assert.ok((await state).actors.find(a => a.id === player.id).velocity.x > 0);
 });

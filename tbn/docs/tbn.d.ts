@@ -24,6 +24,7 @@ export interface ClientEulerAngles extends Vec3 {
 export interface PhysicsProfile {
   /** Required maximum speed in m/s, inclusive range [1, 100]. */
   maxSpeed: number;
+  /** Aircraft uses assisted-flight-v1 target speed/body rates; inspect protocol_info.physics.aircraftModel. */
   controller: 'ground' | 'hover' | 'aircraft' | 'mecha' | 'boat';
 }
 

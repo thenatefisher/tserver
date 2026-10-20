@@ -222,12 +222,19 @@
     "waterLevel": 0,
     "buoyancyStiffness": 30,
     "buoyancyDamping": 6,
-    "aircraftLiftSpeed": 25,
-    "aircraftLiftSlope": 4,
-    "aircraftMaxLiftG": 1.5,
-    "aircraftDrag": 0.08,
     "controllerSchema": "tbn/schemas/actor.schema.json#/properties/physicsProfile/properties/controller",
     "coastDeceleration": 6,
-    "steeringReverseThreshold": 0.1
+    "steeringReverseThreshold": 0.1,
+    "aircraftModel": "assisted-flight-v1",
+    "aircraftVelocityResponse": 1.2,
+    "aircraftAcceleration": 15,
+    "aircraftAngularRate": 0.8,
+    "aircraftAngularAcceleration": 2,
+    "aircraftRateResponse": 0.25,
+    "aircraftAutoLevel": true,
+    "aircraftLevelGain": 1.5,
+    "aircraftBankTurnRate": 0.6,
+    "aircraftTakeoffVerticalSpeed": 0.5,
+    "aircraftTakeoffSpeed": 5
   }
 }

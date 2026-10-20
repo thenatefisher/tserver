@@ -29,6 +29,7 @@ function createHttpServer({ sessions, logger, port = invariants.network.serverPo
     app.get('/sessions', (req, res) => res.json(sessions.list()));
     app.use('/vendor/three', express.static(path.join(root, 'node_modules/three')));
     app.use(express.static(path.join(__dirname, 'public')));
+    app.get('/fly', (req, res) => res.sendFile(path.join(__dirname, 'public/fly.html')));
     app.get(['/', '/admin'], (req, res, next) => {
         res.sendFile(path.join(__dirname, 'public/admin.html'), error => {
             if (!error) return;

@@ -8,7 +8,7 @@
 const { rotateVector } = require('./rotation');
 const { add, scale, dot, cross, normalize, tangent } = require('./vector');
 const { invariants } = require('../contracts');
-const { aircraftLift } = require('./aircraft');
+const { applyAircraft } = require('./aircraft');
 
 /** Apply acceleration at COM as force; controls never overwrite collision-generated velocities. */
 function accelerate(rb, acceleration) { rb.addForce(scale(acceleration, rb.mass()), true); }
@@ -46,6 +46,11 @@ function applyController(record, frame, support, dt, environment) {
     record.jumpHeld = frame.jump;
     const groundMode = mode === 'ground' || mode === 'mecha';
     const up = { x: 0, y: 1, z: 0 };
+    if (mode === 'aircraft') {
+        applyAircraft(record, frame, support, dt, p, environment.gravity ?? invariants.input.standardGravityMetersPerSecondSquared);
+        rb.setAngularDamping(0);
+        return;
+    }
     if (groundMode && support) {
         const forward = normalize(tangent(local({ x: 1, y: 0, z: 0 }), support)), left = normalize(cross(support, forward));
         // Support cancels gravity along the slope and provides grip through a bounded servo.
@@ -69,12 +74,7 @@ function applyController(record, frame, support, dt, environment) {
         angularControl(rb, shape, frame.rotate, p);
     } else {
         const effort = { x: frame.move.x * p.forwardAcceleration, y: frame.move.y * p.lateralAcceleration, z: frame.move.z * p.verticalAcceleration };
-        if (mode === 'aircraft') {
-            effort.y = 0; effort.z = 0;
-            const gravity = environment.gravity ?? invariants.input.standardGravityMetersPerSecondSquared;
-            accelerate(rb, aircraftLift(rb.linvel(), q, gravity, p));
-            accelerate(rb, scale(rb.linvel(), -p.aircraftDrag));
-        } else if (mode === 'hover') {
+        if (mode === 'hover') {
             const center = rb.worldCom(), h = environment.terrain?.heightAt(center.x, center.z);
             if (Number.isFinite(h)) {
                 const gravity = environment.gravity ?? invariants.input.standardGravityMetersPerSecondSquared;

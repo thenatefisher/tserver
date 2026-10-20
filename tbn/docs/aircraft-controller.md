@@ -1,49 +1,76 @@
-# Aircraft physics and client stability controllers
+# Assisted aircraft flight
 
-This documents the current server implementation, not a full aerodynamic aircraft simulator. Register `physicsProfile.controller: "aircraft"` with a schema-valid `maxSpeed`. Read [physics-controls.md](physics-controls.md) for the common protocol and [actions.schema.json](../schemas/actions.schema.json) for complete-frame requirements. The server uses Rapier 3D compatibility package 0.21.0. JSON structure remains authoritative in the shared schemas; equations below describe the server's controller behavior.
+Aircraft use **`assisted-flight-v1`**, announced in `protocol_info.physics.aircraftModel`. This replaces the former thrust/torque and aerodynamic lift model. The JSON action envelope remains protocol version 2; aircraft input semantics have changed. Clients must check the model identifier, discard old lift/drag feed-forward and torque compensation, and use these semantics. Other controller modes retain their existing behavior.
 
-## Inputs and effective parameters
+The server handles speed, body-rate stabilization, gravity compensation and coordinated banked turning. Clients can map keys/sticks directly to controls without a stability controller. Rapier still owns integration, geometry contacts and impacts; no flight command overwrites pose or velocity.
 
-Send complete `action` frames at approximately 30 Hz:
+## Direct controls
 
-```json
-{
-  "protocolVersion": 2,
-  "sequence": 123,
-  "move": { "x": 0.4, "y": 0, "z": 0 },
-  "rotate": { "x": 0, "y": -0.2, "z": 0 },
-  "brake": 0,
-  "jump": false
-}
-```
+Send complete held-state action frames at about 30 Hz, with strictly increasing sequences. All move/rotate XYZ components, `brake` and `jump` remain required by [actions.schema.json](../schemas/actions.schema.json).
 
-| Input | Aircraft interpretation |
+| Input | Aircraft meaning |
 | --- | --- |
-| `move.x` | Forward/reverse thrust effort, [-1,1]; zero means no thrust, not speed hold |
-| `move.y`, `move.z` | Ignored; no lateral or vertical thrusters |
-| `rotate.x` | Body +X roll torque effort |
-| `rotate.y` | Body +Y pitch torque effort; negative pitches the nose up, positive pitches down |
-| `rotate.z` | Body +Z yaw torque effort; positive turns the nose left when upright |
-| `brake` | [0,1] acceleration opposing COM velocity, in air as well as on the ground |
+| `move.x` | Signed target speed fraction of registered `maxSpeed`; 0 requests a smooth stop, +1 maximum forward speed, -1 reverse |
+| `move.y`, `move.z` | Ignored |
+| `rotate.x` | Target body roll-rate fraction; positive raises the left wing (roll right) |
+| `rotate.y` | Target body pitch-rate fraction; negative nose up, positive nose down |
+| `rotate.z` | Additional body yaw-rate fraction; positive turns left upright |
+| `brake` | Scales target speed by `1-brake`; 1 requests a smooth stop even with throttle held |
 | `jump` | Ignored |
 
-Each axis is independent normalized effort, not an angle, desired rate or guaranteed acceleration. Unsupported move axes must still be present. Aircraft yaw is not inverted during reverse motion; the ground/mecha reverse-steering rule does not apply.
+Neutral pitch stops pitching, preserving the resulting nose attitude. Neutral roll automatically levels the wings by default. Neutral yaw still permits coordinated bank turning about world vertical. Lowering the left wing turns left; lowering the right wing turns right. The coordinated turn preserves nose elevation rather than yawing about the banked body-up axis. At zero target speed an airborne aircraft stops and hovers; there are no stalls. Pitching down steers velocity downward; pitching up steers it upward. Full throttle changes target speed rather than lift. Response takes time and respects acceleration limits.
 
-Use `protocol_info.physics` for effective session parameters, rather than hardcoding the defaults below. Session overrides can change these parameters. The actor's `maxSpeed` comes from its accepted registration profile.
+Example: `move:{x:0.5,y:0,z:0}`, `rotate:{x:0,y:-0.5,z:0}`, `brake:0`, `jump:false`, plus `protocolVersion:2` and a fresh `sequence`, requests half maximum forward speed and a nose-up pitch rate.
 
-| Symbol / parameter | Default | Meaning |
+## Effective policy and exact servos
+
+Use `protocol_info.physics` for effective values; [invariants.json](invariants.json) owns defaults. These are server/session policy, not arbitrary registration fields.
+
+| Parameter | Default | Meaning |
 | --- | --- | --- |
-| `g` / `gravity` | 9.81 m/s² | World-down gravity magnitude; also scales aircraft lift |
-| `T` / `forwardAcceleration` | 29.43 m/s² | Full forward/reverse thrust acceleration |
-| `A` / `angularAcceleration` | 1 rad/s² | Per-axis commanded angular-acceleration scale before damping/contacts |
-| `vL` / `aircraftLiftSpeed` | 25 m/s | Forward speed producing 1 g at zero incidence |
-| `k` / `aircraftDrag` | 0.08 s⁻¹ | Linear drag coefficient |
-| `B` / `brakeDeceleration` | 20 m/s² | Full braking deceleration |
-| `maxAngularSpeed` | 3 rad/s | Limit on the angular-velocity vector magnitude |
-| `density` | 1 mass unit/m³ | Uniform session density |
-| Angular damping `d` | 0.3 s⁻¹ | Applied to all angular axes, even with active rotational input |
+| `aircraftVelocityResponse` | 1.2 s | Velocity-error response time |
+| `aircraftAcceleration` | 15 m/s² | Magnitude cap on velocity-servo acceleration, before gravity compensation |
+| `aircraftAngularRate` | 0.8 rad/s | Magnitude cap on requested body rates |
+| `aircraftAngularAcceleration` | 2 rad/s² | Magnitude cap on angular servo acceleration |
+| `aircraftRateResponse` | 0.25 s | Angular-rate-error response time |
+| `aircraftAutoLevel` | true | Enable neutral-roll leveling |
+| `aircraftLevelGain` | 1.5 s⁻¹ | Bank-to-roll-rate leveling gain |
+| `aircraftBankTurnRate` | 0.6 rad/s | Coordinated yaw contribution cap |
+| `aircraftTakeoffSpeed` | 5 m/s | Required target and horizontal speed for pitch-up runway assistance |
+| `aircraftTakeoffVerticalSpeed` | 0.5 m/s | Upward desired-velocity threshold for runway gravity compensation |
 
-Lift tuning is announced in `protocol_info.physics`: `aircraftLiftSlope=4` per radian and `aircraftMaxLiftG=1.5`. The aircraft damping coefficient 0.3 remains an implementation constant, not a selectable profile field or named policy parameter. Do not invent an `angularDamping` wire field. There is no aircraft engine spool-up, throttle slew limit, automatic leveling, altitude hold, airspeed hold or trim controller. Those can be implemented by the client using ordinary input frames.
+Let `R` map body vectors to world, `v` be COM velocity, `h` the physics substep, `g` gravity, and `limit(v,L)` clamp vector magnitude to L. Scalars use `clamp(x,min,max)`.
+
+```text
+forward = R*(1,0,0); left = R*(0,1,0); up = R*(0,0,1)
+speed = move.x * maxSpeed * (1-brake)
+v_target = forward * speed
+a_servo = limit((v_target-v)/max(h,aircraftVelocityResponse), aircraftAcceleration)
+launching = speed > aircraftTakeoffSpeed AND rotate.y < 0
+            AND length((v.x,v.z)) > aircraftTakeoffSpeed
+assisted = NOT terrainSupported OR v_target.y > aircraftTakeoffVerticalSpeed OR launching
+a_actuation = a_servo + (assisted ? (0,g,0) : (0,0,0))
+F = mass * a_actuation
+# Rapier separately applies (0,-g,0) and contact impulses.
+
+bank = atan2(left.y,up.y)
+w_target = rotate * aircraftAngularRate
+if rotate.x == 0 AND aircraftAutoLevel:
+    w_target.x = -bank * aircraftLevelGain
+if NOT terrainSupported:
+    turn = -g*tan(clamp(bank,-1,1))/max(5,abs(speed))
+    w_target += inverse(R)*(0,clamp(turn,-aircraftBankTurnRate,aircraftBankTurnRate),0)
+w_target = limit(w_target,aircraftAngularRate)
+w_body = inverse(R) * w_world
+alpha = limit((w_target-w_body)/max(h,aircraftRateResponse), aircraftAngularAcceleration)
+torque_world = R * (Ix*alpha.x, Iy*alpha.y, Iz*alpha.z)
+```
+
+Aircraft Rapier angular damping is zero: angular damping comes from the explicit rate servo, not the old 0.3 coefficient. Near zero target rate in unconstrained single-axis motion, rates decay approximately exponentially with the 0.25 s response time, until numerical/contact effects matter. Full input requests a rate, with acceleration limited to 2 rad/s² across all axes, rather than constant torque forever. There are no lift/drag equations or speed-dependent rotation authority. Combined axes share the rate/acceleration budgets. The existing global angular-speed cap of 3 rad/s and registered COM `maxSpeed` cap still apply after integration.
+
+## Takeoff, landing and collision behavior
+
+On supporting terrain, gravity remains active at rest and during level taxi. Above 5 m/s actual horizontal speed and positive target speed above 5 m/s, holding nose-up input enables gravity compensation so the body can pitch off the runway. An upward target velocity above 0.5 m/s also enables assistance. While airborne, assistance cancels gravity even at zero throttle. To land, pitch down and reduce speed; once supported, release controls to settle under gravity. Contact geometry, restitution and impulses still apply. The aircraft is not aligned automatically with terrain and has no landing gear or detailed crash model. Flight forces recover velocity smoothly after impacts rather than teleporting through obstacles.
 
 ## Mass, center of mass and inertia
 
@@ -62,28 +89,6 @@ I_body = diag(Ix, Iy, Iz)
 These are the actual configured Rapier mass properties: visual-box centroid COM and diagonal box inertia approximation, not an exact volume-centroid/inertia integration. Bounds include the GLB node transforms. Geometry can be off-center relative to the actor root. Convex hull/decomposition approximates the collision shape, but mass uses the original validated volume.
 
 Mass, bounds, COM and inertia are not currently transmitted as per-actor numeric fields. A client can derive them from its exact registered GLB and the effective session density. `mesh.metadata.visualSize` supplies the declared extents, validated against the transformed geometry, but does not fully specify an offset COM. Do not read the fixed 2 m gameplay hitbox as the inertia box. Geometry validation and mass construction live in the server's `modules/actors/glb.js` and `modules/physics/body.js`.
-
-## Rotation response and damping
-
-Let `u = (rotate.x, rotate.y, rotate.z)` and `R` map body-local vectors into world coordinates. At every fixed physics substep, the controller resets previous actuation forces/torques and applies:
-
-```text
-tau_body = (Ix * A * u.x, Iy * A * u.y, Iz * A * u.z)
-tau_world = R * tau_body
-```
-
-For isolated principal-axis motion without contact, full input therefore requests approximately **1 rad/s²** about that body axis before damping. It is a torque command scaled by inertia, not an instruction to overwrite angular velocity. Collision impulses and general rigid-body integration can change the observed response. There is no airspeed multiplier on control torque: control authority exists at zero speed, in reverse and during ground contact. The server does not suppress aircraft pitch/roll on the runway or stabilize the aircraft to the terrain.
-
-Rapier's angular damping operation for an integration interval `delta` is:
-
-```text
-omega_after_damping = omega_before_damping / (1 + d * delta)
-d = 0.3 s⁻¹
-```
-
-This scales all components, not only yaw. It is not “subtract 0.3 rad/s every frame” or “multiply by 0.7 per snapshot.” The small-step continuous approximation is `domega/dt = alpha_command - d*omega`. Neutral-input angular velocity decays approximately as `omega(t) = omega(0)*exp(-0.3*t)`; the half-life is about 2.31 seconds. Rapier's operator is documented in its [rigid-body velocity implementation](https://docs.rs/rapier3d/latest/src/rapier3d/dynamics/rigid_body_components.rs.html) (`apply_damping`); that link follows upstream, while this server pins its JS/WASM dependency.
-
-For a small-step, contact-free, single-axis predictor, `omega_next ≈ (omega + A*u*h)/(1+d*h)` is useful. It is not a promise of bit-identical Rapier simulation: solver internals, quaternion updates, floating point, contacts and caps also matter. The server clamps angular-velocity vector length after every outer 1/120 s step; all three axes share the 3 rad/s magnitude budget. A constant full single-axis input would otherwise approach `A/d ≈ 3.33 rad/s`, so the cap limits it first.
 
 ## Coordinates and state reconstruction
 
@@ -129,41 +134,6 @@ velocity_COM = velocity_root + cross(omega_world, r_world)
 
 Using root velocity directly as COM velocity can introduce false airspeed/vertical-speed oscillations while an off-center aircraft rotates. Define whether altitude hold targets root altitude or COM altitude; use consistent position/velocity pairs. For this flight model COM altitude is generally the simpler control variable.
 
-## Exact thrust, lift, drag and braking equations
-
-Define world-space unit vectors `f = R*(1,0,0)` (forward) and `left = R*(0,1,0)` (body left). Let `v` be world COM velocity and `uT = move.x`:
-
-```text
-v_forward = max(0, dot(v, f))
-vb = inverse(R) * v
-alpha = atan2(-vb.z, vb.x)
-coefficient = clamp(1 + aircraftLiftSlope * alpha, -1, 2)
-C = clamp((v_forward / vL)² * coefficient, -aircraftMaxLiftG, aircraftMaxLiftG)
-liftDirection = normalize(cross(R*(vb.x,0,vb.z), left))
-# If vb.x <= 0, lift is zero (skip alpha/direction computation).
-a_thrust = T * uT * f
-a_lift = g * C * liftDirection
-a_drag = -k * v
-a_gravity = (0, -g, 0)
-a_brake = 0                                      if |v| = 0
-        = -normalize(v) * min(|v|/h, B*brake)     otherwise
-a_total = a_thrust + a_lift + a_drag + a_gravity + a_brake
-F_actuation = m * (a_thrust + a_lift + a_drag + a_brake)
-```
-
-Rapier adds gravity and resolves contacts. The brake cap limits its own contribution for the current outer substep; combined forces can still alter the resulting velocity. There is no additional configured Rapier linear damping; `aircraftDrag` is an explicitly applied force. The stronger neutral-throttle ground/mecha coasting friction does not apply to aircraft.
-
-Important consequences for hold controllers:
-
-- “Airspeed” here is the **positive forward COM-velocity projection** for lift magnitude, with pitch-plane incidence from body X/Z velocity; not total speed and not a measured wind-relative velocity. There is no wind model. Backward or purely sideways motion produces no lift through this formula.
-- At upright, level attitude with horizontal velocity, 25 m/s gives 1 g of lift. Lift magnitude is capped at 1.5 g in either direction, replacing the old 4 g cap and 10 m/s trim speed. With `gravity=0`, lift is zero.
-- Incidence `alpha` measures nose elevation relative to the pitch-plane flight path, not world pitch alone. Nose-down attitude relative to horizontal travel reduces lift immediately; sufficiently negative incidence creates downward lift. As the aircraft descends, incidence changes again. Pitch therefore changes vertical acceleration, not vertical velocity instantaneously.
-- Lift is perpendicular to pitch-plane airflow, tilted by bank, and can be signed. There is no detailed stall, airfoil, induced-drag, wind or ground-effect model. Rotation-control torque remains independent of airspeed.
-- Vertical acceleration before contacts is `T*uT*f.y + g*C*liftDirection.y - g - k*v.y`, plus braking. Positive body Y pitch is nose down; negative is nose up. Existing upward momentum takes time to dissipate.
-- In upright, level, unbanked equilibrium without braking, thrust feed-forward is approximately `uT = k*v_forward/T`. At 25 m/s this is about 0.068. Zero throttle still permits passive lift, drag and gravity. Full throttle continues accelerating and is not an altitude-hold command.
-- Level altitude hold can require positive incidence below 25 m/s or reduced incidence above it. It may be infeasible at low speed, excessive bank, low registered `maxSpeed`, or actuator saturation. Include the incidence dependence and load cap in the controller, with anti-windup.
-- The server caps total COM speed to the registered `maxSpeed` after each outer substep. It is a hard vector-magnitude clamp, not an aerodynamic terminal-speed model. Contact/boundary constraints can also override unconstrained flight.
-
 ## Timing, timestamps and latency
 
 | Stage | Current implementation |
@@ -173,9 +143,9 @@ Important consequences for hold controllers:
 | Client input | Complete held-state frames recommended at 30 Hz; vectors are not partial patches |
 | Application | Network handler validates/stores newest frame; next session tick consumes the latest sequence and holds it over that tick's substeps |
 | Publication | Full snapshots approximately 15 Hz (66.7 ms), on a timer independent of simulation; lifecycle/admin actions can publish extra snapshots |
-| Timeout | Neutralizes controls after 250 ms of **simulation time** without a newer consumed frame; passive lift/drag/gravity/damping continue |
+| Timeout | Neutralizes controls after 250 ms of **simulation time** without a newer consumed frame; target speed becomes zero; rate stabilization, wing leveling and airborne gravity compensation continue |
 
-A newer frame replaces held controls; this is not a FIFO replay of all input frames. Multiple frames arriving between ticks may be coalesced to the latest one. `lastInputSequence` acknowledges that latest consumed frame. Duplicate/out-of-order sequences are rejected and do not refresh timeout. Inputs remain constant until superseded or stale, but body orientation, torque direction, thrust, lift and drag are recalculated each physics substep.
+A newer frame replaces held controls; this is not a FIFO replay of all input frames. Multiple frames arriving between ticks may be coalesced to the latest one. `lastInputSequence` acknowledges that latest consumed frame. Duplicate/out-of-order sequences are rejected and do not refresh timeout. Inputs remain constant until superseded or stale, but body orientation, target velocity and servo forces/torques are recalculated each physics substep.
 
 There are currently **no snapshot timestamps, simulation tick IDs, server send timestamps, input application timestamps, clock synchronization, or published RTT/ping statistics**. `data_version` provides session-local resource versions for cache/receipt tracking, not physical timestamps. A cached/retried snapshot may be identical to one already received; its version can identify a replay. Do not invent `state.timestamp`, `state.serverTime`, `state.tick`, or per-input application-time fields. Snapshot version counts are not fixed-duration physics ticks.
 
@@ -187,27 +157,20 @@ A client can timestamp sent sequences and snapshot arrivals with its local monot
 
 Use the newest authoritative state for control estimation, not the deliberately delayed/interpolated render pose. A one-snapshot display buffer adds about 66.7 ms of client display delay beyond the feedback path; it should not silently become extra control-loop delay.
 
-## Building client stability, altitude and airspeed hold
+## Optional client autopilots
 
-A practical client can use a conservative cascaded controller, while keeping the server authoritative:
+Basic clients need no feedback controller: map throttle directly to target speed and pitch/roll/yaw to requested rates. Clear held keys on blur/disconnect and send complete frames continuously while active. On timeout, zero target speed brings the aircraft to a gradual stop; it does not coast like the previous model.
 
-1. Read effective session parameters and the registered actor's geometry/profile. Reconstruct world quaternion, body angular rates and COM velocity from the newest state. Keep an estimate across snapshot gaps; reconcile it on authoritative updates.
-2. For attitude hold, form body-frame quaternion error `q_error = inverse(qWorld_current) * qWorld_target`. Choose the equivalent quaternion with nonnegative `w` for the short rotation. Convert to an axis-angle error vector (or `2*q_error.xyz` for small errors).
-3. An inner-loop starting structure is `alpha_target = Kp*attitude_error - Kd*omega_body`. Approximate damping compensation can add `d*omega_body` before dividing by `A`; clamp each resulting `rotate` effort to [-1,1]. This is a continuous/small-step design aid, not an exact inversion of multi-axis Rapier dynamics. Tune gains against measured delayed feedback; they are not server-supplied constants.
-4. For airspeed hold, measure `v_forward`, use `k*v_target/T` as a level-flight thrust feed-forward, and add bounded proportional/integral speed correction. Add anti-windup at thrust/speed limits. Negative effort is reverse thrust, not an engine-idle command.
-5. For altitude hold, use altitude error to request a bounded climb/descent rate, then a bounded pitch/attitude target for the inner loop, while the airspeed loop manages thrust. Include the actual vertical-force equation, bank angle, available lift and speed limits. Do not pretend ignored `move.z` is an altitude control.
-6. Choose deliberate takeoff/landing behavior from `grounded` and forward speed. Ground contact does not disable aircraft torque, so hold-controller inputs can tip a stationary aircraft. Decide whether to inhibit pitch/roll until takeoff; no server landing-gear controller does this for you.
-7. Refresh complete frames with increasing sequences, including neutral inputs. Clear stale local controls on blur/disconnect. Reset estimators/integrators/interpolation after session transfer, re-registration or admin terrain repositioning (`terrain_changed`/`terrain_flattened`); preserve or reset sequence counters according to the common protocol's specific lifecycle rules.
+For attitude hold, form the shortest body-frame quaternion error and request bounded proportional angular rates by dividing desired rates by `aircraftAngularRate`. Do not add the old torque or angular-damping compensation. Server rate stabilization already closes the inner loop. For altitude hold, request a bounded vertical rate from altitude error, derive a feasible pitch from desired vertical rate and target speed, and use attitude hold to approach that pitch. Avoid integrator windup at speed/rate/acceleration limits. Delayed snapshots and missing authoritative timestamps still limit precision.
 
-Do not directly set authoritative position/velocity or rotate the physical actor locally to fake the hold. Render prediction is optional and must reconcile to server snapshots. This model provides sufficient actuation to experiment with stabilization, but absent server timestamps/application-time telemetry limits how precisely a client can reconstruct delayed physics state.
+The built-in Flight Lab is available at `/fly`, also linked from `/admin`. It joins a selected session as an ordinary player with a prebuilt validated glider GLB (3 m span, 0.45 m wing chord, 2.8 m fuselage) and 40 m/s maximum speed. It renders server DTED and actor GLBs, sends complete frames, and displays root altitude/velocity and sequence acknowledgments. Display poses interpolate positions and shortest-arc quaternions in a 100 ms receipt-time buffer; the chase camera follows those same display poses. This adds display delay, not physics/input delay. On snapshot starvation it freezes rather than extrapolating through terrain. Telemetry uses the newest authoritative state. Reconnecting creates a fresh actor; it does not grant admin powers. W/S adjusts target speed, Left/Right Arrow bank and turn left/right respectively, Down Arrow noses up, Up Arrow noses down, Q/E yaw, Space brakes, Escape clears controls. On-screen hold buttons offer the same rotation controls. The speed slider stays set until changed or controls are stopped.
 
 ## Implementation references
 
-- `modules/physics/controllers.js`: exact aircraft forces, torque scale and hardcoded damping.
-- `modules/physics/body.js`: volume mass, box COM and inertia construction.
-- `modules/physics/rotation.js`: Euler/quaternion/basis conversion.
-- `modules/physics/model.js`: fixed substeps, input hold/timeout, COM/root projection and caps.
-- `modules/sessions/session.js`: snapshot contents and publication timers.
-- `tbn/docs/invariants.json`: default physical/network tuning; runtime `protocol_info` supplies effective overrides where implemented.
+- `modules/physics/aircraft.js`: assisted flight forces and rate servo.
+- `modules/physics/controllers.js`: controller dispatch and force reset.
+- `modules/physics/body.js`: volume mass, COM and box inertia.
+- `modules/physics/model.js`: substeps, timeout, COM/root projection, contacts and caps.
+- `modules/server/public/fly.js`: direct player interface.
 
-These paths identify the server sources for maintainers; client builds should consume the shared schemas/contracts and their own GLB assets, not import the server implementation.
+Clients consume shared contracts and their own GLBs; they do not import server modules.

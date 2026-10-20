@@ -128,7 +128,7 @@ test('controller modes implement mecha strafe, hover support, flight lift and pl
     const hover = model(t, [actor({ position: { x: -10, y: 0, z: 0 }, physicsProfile: { maxSpeed: 100, controller: 'hover' } })]);
     const hovering = run(hover, 4); assert.ok(hovering.position.y > 0.8 && hovering.position.y < 1.5);
     const plane = model(t, [actor({ position: { x: 0, y: 10, z: 0 }, velocity: { x: 25, y: 0, z: 0 }, physicsProfile: { maxSpeed: 100, controller: 'aircraft' } })], {});
-    assert.ok(run(plane, 0.2, { move: { x: 0.1 } }).position.y > 9.8);
+    assert.ok(Math.abs(run(plane, 0.2, { move: { x: 0.1 } }).position.y - 10) < 0.05);
     const boat = model(t, [actor({ position: { x: 0, y: -1, z: 0 }, physicsProfile: { maxSpeed: 100, controller: 'boat' } })], { waterLevel: 0 });
     assert.ok(Math.abs(run(boat, 4).position.y + 0.5) < 0.05);
 });
@@ -252,20 +252,52 @@ test('supported steering reverses with backward travel and reverse takeoff, but 
 });
 
 
-test('aircraft lift is bounded and nose-down attitude changes the flight path', t => {
-    const { aircraftLift } = require('../modules/physics/aircraft');
-    const policy = invariants.physics;
-    const lift = (speed, pitch) => aircraftLift({ x: speed, y: 0, z: 0 }, worldQuaternion({ x: 0, y: pitch, z: 0, order: 'XYZ' }), 9.81, policy);
-    assert.ok(Math.abs(lift(25, 0).y - 9.81) < 1e-5);
-    assert.ok(lift(100, 0).y <= 9.81 * 1.5 + 1e-5);
-    assert.ok(lift(25, 0.25).y < 0.01, 'nose down removes positive lift');
-    assert.ok(lift(25, -0.25).y > lift(25, 0).y, 'nose up increases lift');
-    const fly = pitch => {
-        const m = model(t, [actor({ position: { x: 0, y: 100, z: 0 }, velocity: { x: 25, y: 0, z: 0 },
-            orientation: { x: 0, y: pitch, z: 0, order: 'XYZ' }, physicsProfile: { maxSpeed: 100, controller: 'aircraft' } })], {});
-        return run(m, 0.5, { move: { x: 0.1 } });
-    };
-    const level = fly(0), down = fly(0.25);
-    assert.ok(down.velocity.y < level.velocity.y - 1, 'Rapier integrates reduced lift and downward thrust');
-    assert.ok(down.position.y < level.position.y - 0.3);
+test('assisted aircraft hold target speed/altitude, pitch changes climb, and neutral controls stop rates', t => {
+    const fly = (pitch = 0, velocity = { x: 0, y: 0, z: 0 }) => model(t, [actor({
+        position: { x: -100, y: 100, z: 0 }, velocity, orientation: { x: 0, y: pitch, z: 0, order: 'XYZ' },
+        physicsProfile: { maxSpeed: 40, controller: 'aircraft' } })], {});
+    const level = run(fly(), 5, { move: { x: 0.5 } });
+    assert.ok(Math.abs(level.velocity.x - 20) < 0.6);
+    assert.ok(Math.abs(level.position.y - 100) < 0.05, 'no speed-dependent runaway lift');
+    const down = run(fly(0.25), 2, { move: { x: 0.5 } });
+    const up = run(fly(-0.25), 2, { move: { x: 0.5 } });
+    assert.ok(down.velocity.y < -3 && up.velocity.y > 3);
+    const rotating = fly();
+    run(rotating, 1, { move: { x: 0.5 }, rotate: { y: 1 } });
+    assert.ok(rotating.getState().actors[0].rotationalRates.y > 0.6);
+    const settled = run(rotating, 2, { move: { x: 0.5 } });
+    assert.ok(Math.abs(settled.rotationalRates.y) < 0.01);
+    const stopped = run(fly(0, { x: 20, y: 0, z: 0 }), 5, { move: { x: 1 }, brake: 1 });
+    assert.ok(Math.abs(stopped.velocity.x) < 0.4);
+});
+
+test('assisted aircraft take off through forces and settle on terrain with neutral controls', t => {
+    const m = model(t, [actor({ physicsProfile: { maxSpeed: 40, controller: 'aircraft' } })]);
+    const parked = run(m, 2);
+    assert.ok(parked.grounded && Math.abs(parked.velocity.y) < 0.1);
+    run(m, 1, { move: { x: 0.8 } });
+    const flying = run(m, 0.7, { move: { x: 0.8 }, rotate: { y: -0.6 } });
+    assert.ok(!flying.grounded && flying.position.y > 0.2);
+});
+
+test('banked aircraft coordinate turns and neutral roll recovers wings level', t => {
+    const m = model(t, [actor({ position: { x: -100, y: 100, z: 0 }, orientation: { x: 0.4, y: 0, z: 0, order: 'XYZ' },
+        physicsProfile: { maxSpeed: 40, controller: 'aircraft' } })], {});
+    const turning = run(m, 0.15, { move: { x: 0.5 } });
+    assert.ok(turning.rotationalRates.z < 0, 'raised left wing coordinates a right turn');
+    const leveled = run(m, 4, { move: { x: 0.5 } });
+    assert.ok(Math.abs(leveled.orientation.x) < 0.03);
+});
+
+test('coordinated bank turns preserve nose elevation and turn toward the lowered wing', t => {
+    for (const roll of [-0.45, 0.45]) {
+        const initial = { x: roll, y: -0.15, z: 0, order: 'XYZ' };
+        const m = model(t, [actor({ position: { x: -100, y: 100, z: 0 }, orientation: initial,
+            physicsProfile: { maxSpeed: 40, controller: 'aircraft' } }, require('../modules/server/public/flight-actor.json').mesh)], { aircraftAutoLevel: false });
+        const before = rotateBodyToWorld({ x: 1, y: 0, z: 0 }, initial).y;
+        const after = run(m, 2, { move: { x: 0.7 } });
+        const elevation = rotateBodyToWorld({ x: 1, y: 0, z: 0 }, after.orientation).y;
+        assert.ok(Math.abs(elevation - before) < 0.025, `roll ${roll} must not induce a pitch change: ${elevation - before}`);
+        assert.equal(Math.sign(after.velocity.z), Math.sign(roll), 'right bank turns right; left bank turns left');
+    }
 });
