@@ -97,7 +97,7 @@ function animate(now) {
     const dt = Math.min(0.1, (now - previous) / 1000); previous = now;
     if (keys.has('KeyW') || keys.has('KeyS')) { throttle = Math.max(0, Math.min(100, throttle + (keys.has('KeyW') ? 1 : -1) * dt * 30)); $('throttle').value = Math.round(throttle); }
     $('throttle-value').value = `${$('throttle').value}%`;
-    reticle.hide();
+    reticle.hide(); $('sky-reticle').style.display = 'none';
     for (const rendered of poses.sample(now)) {
         const { position, quaternion: q } = rendered;
         const mesh = actors.get(rendered.id); if (mesh) { mesh.position.copy(position); mesh.quaternion.copy(q); }
@@ -107,6 +107,19 @@ function animate(now) {
         if (registered) reticle.update(aimOffset.clone().applyQuaternion(q).add(position), forward);
         camera.position.lerp(position.clone().addScaledVector(forward, -13).add(new THREE.Vector3(0, 5, 0)), 1 - Math.exp(-5 * dt));
         camera.lookAt(position.clone().addScaledVector(forward, 7));
+        if (reticle.mode === 'sky') {
+            // A sky marker is a screen-space circle at the boresight vanishing point,
+            // not a fake terrain hit or a depth-tested object floating in the world.
+            camera.updateMatrixWorld();
+            const point = camera.position.clone().addScaledVector(forward, 10000);
+            const inFront = point.clone().applyMatrix4(camera.matrixWorldInverse).z < 0;
+            point.project(camera);
+            if (inFront && Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1) {
+                $('sky-reticle').style.left = `${(point.x + 1) * innerWidth / 2}px`;
+                $('sky-reticle').style.top = `${(1 - point.y) * innerHeight / 2}px`;
+                $('sky-reticle').style.display = 'block';
+            }
+        }
         $('telemetry').textContent = `Speed  ${Math.hypot(actor.velocity.x, actor.velocity.y, actor.velocity.z).toFixed(1)} m/s\nAltitude  ${actor.position.y.toFixed(1)} m\nVertical rate  ${actor.velocity.y.toFixed(1)} m/s\n${actor.grounded ? 'Ground contact' : 'Airborne'} · input ack ${actor.lastInputSequence}`;
     }
     renderer.render(scene, camera); requestAnimationFrame(animate);

@@ -39,7 +39,7 @@ Server snapshots arrive around 15 Hz. Render at browser animation-frame rate and
 
 Render terrain from the received DTED data, including the server triangle topology, scale, edges and no-data holes, and render every actor from its registered GLB. Rebuild on terrain replacement and clear display history after terrain repositioning or connection/session lifecycle resets. Preserve input sequences after admin terrain changes as specified in the common protocol. A grid/horizon, restrained terrain contrast and clear aircraft silhouette make motion and attitude easier to read; adapt presentation for 2D/ASCII requests while keeping these control semantics.
 
-For an aiming experience, a useful optional cue is a circular reticle projected along body +X onto the first terrain intersection, as in Flight Lab. Map the outline onto the actual terrain surface rather than floating a flat ring above it; hide it when aim misses and use the displayed aircraft pose for smooth motion. Keep this visual preview distinct from ballistic trajectories or hit guarantees. It does not introduce a `fire` action.
+For an aiming experience, a useful optional cue is a circular reticle projected along body +X onto the first terrain intersection, as in Flight Lab. Map the outline onto the actual terrain surface rather than floating a flat ring above it; show a red boresight circle when aim misses terrain, suppress hits nearer than 5 m, and use the displayed aircraft pose for smooth motion. Keep this visual preview distinct from ballistic trajectories or hit guarantees. It does not introduce a `fire` action.
 
 ## Vehicle assets and useful feedback
 

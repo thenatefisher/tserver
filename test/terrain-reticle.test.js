@@ -12,20 +12,35 @@ async function fixture(t) {
     t.after(() => { reticle.dispose(); geometry.dispose(); terrain.material.dispose(); });
     return { THREE, terrain, reticle };
 }
-test('aim circle projects to the actual sloping terrain and hides when aim misses', async t => {
+test('aim circle projects to the actual sloping terrain and reports sky when aim misses', async t => {
     const { THREE, terrain, reticle } = await fixture(t);
     const direction = new THREE.Vector3(1, -1, 0).normalize();
     const hit = reticle.update(new THREE.Vector3(0, 12, 0), direction);
     assert.ok(hit && Math.abs(hit.x - 10) < 1e-5 && Math.abs(hit.y - 2) < 1e-5);
-    assert.equal(reticle.overlay.visible, true);
+    assert.equal(reticle.overlay.visible, true); assert.equal(reticle.mode, 'terrain');
     assert.equal(reticle.overlay.geometry, terrain.geometry, 'projection uses the terrain surface itself, not a floating ring plane');
     assert.ok(reticle.material.uniforms.center.value.distanceTo(hit) < 1e-8);
     assert.equal(reticle.update(new THREE.Vector3(0, 12, 0), new THREE.Vector3(0, 1, 0)), null);
-    assert.equal(reticle.overlay.visible, false);
+    assert.equal(reticle.overlay.visible, false); assert.equal(reticle.mode, 'sky');
 });
 test('terrain replacement removes stale projection without disposing borrowed geometry', async t => {
     const { terrain, reticle } = await fixture(t); let disposed = false;
     terrain.geometry.addEventListener('dispose', () => { disposed = true; });
     reticle.setTerrain(null);
     assert.equal(terrain.children.length, 0); assert.equal(disposed, false);
+});
+
+
+test('reticle suppresses hits below 5 metres, includes exactly 5, and clears sky mode', async t => {
+    const { THREE, reticle } = await fixture(t);
+    const down = new THREE.Vector3(0, -1, 0);
+    assert.equal(reticle.update(new THREE.Vector3(0, 4.99, 0), down), null);
+    assert.equal(reticle.mode, 'hidden'); assert.equal(reticle.overlay.visible, false);
+    assert.ok(reticle.update(new THREE.Vector3(0, 5, 0), down));
+    assert.equal(reticle.mode, 'terrain');
+    assert.equal(reticle.update(new THREE.Vector3(0, 0, 0), down), null);
+    assert.equal(reticle.mode, 'hidden');
+    reticle.update(new THREE.Vector3(0, 10, 0), new THREE.Vector3(0, 1, 0));
+    assert.equal(reticle.mode, 'sky'); reticle.hide(); assert.equal(reticle.mode, 'hidden');
+    reticle.setTerrain(null); reticle.update(new THREE.Vector3(), down); assert.equal(reticle.mode, 'hidden');
 });
