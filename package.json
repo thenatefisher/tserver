@@ -5,7 +5,6 @@
   "main": "game-server.js",
   "scripts": {
     "host": "node game-server.js",
-    "client": "node client-node.js",
     "test": "node --test test/*.test.js",
     "start": "node game-server.js"
   },
