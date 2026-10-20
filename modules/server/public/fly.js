@@ -6,6 +6,7 @@
  * Coupling: fly.html supplies controls; normal TBN player contracts and local Three.js assets.
  */
 import * as THREE from 'three';
+import { TerrainReticle } from './terrain-reticle.mjs';
 import { flightInput } from './flight-input.mjs';
 import { FlightPoses } from './flight-poses.mjs';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -15,7 +16,8 @@ const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 20
 const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); $('view').append(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xd8edff, 0x36452f, 2.8)); const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(100, 200, 80); scene.add(sun);
 const loader = new GLTFLoader(), actors = new Map(), requested = new Set(), keys = new Set();
-const poses = new FlightPoses(100);
+const poses = new FlightPoses(100), reticle = new TerrainReticle(3);
+const aimOffset = new THREE.Vector3();
 let throttle = 0;
 let socket, generation = 0, sequence = 0, registered = false, terrain, targets, latest = { actors: [] }, policy, previous = performance.now();
 /** Dispose one owned object tree, including material textures, without touching shared assets. */
@@ -33,6 +35,7 @@ function send(forceNeutral = false) {
 }
 /** Replace the exact server triangle grid, repeating its far-edge samples and omitting no-data holes. */
 function showMap(map) {
+    reticle.setTerrain(null);
     if (terrain) dispose(terrain); if (targets) dispose(targets);
     const t = map.terrain, positions = [], indices = [];
     for (let r = 0; r <= t.rows; r++) for (let c = 0; c <= t.columns; c++) {
@@ -45,7 +48,7 @@ function showMap(map) {
         if (valid) indices.push(a, cc, b, b, cc, d);
     }
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geometry.setIndex(indices); geometry.computeVertexNormals();
-    terrain = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x63846c, roughness: 1, side: THREE.DoubleSide })); scene.add(terrain);
+    terrain = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x63846c, roughness: 1, side: THREE.DoubleSide })); scene.add(terrain); reticle.setTerrain(terrain);
     targets = new THREE.Group();
     // Targets are visual markers from the world contract, rather than invented physical obstacles.
     for (const target of map.targets || []) { const marker = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xef8459 })); marker.position.set(target.x, target.y, target.z); targets.add(marker); }
@@ -53,7 +56,7 @@ function showMap(map) {
 }
 /** Connect as a normal player; reset state and ignore late GLB loads from old connections. */
 async function connect() {
-    const epoch = ++generation; registered = false; stop(); socket?.disconnect(); sequence = 0; policy = null; poses.clear();
+    const epoch = ++generation; registered = false; stop(); socket?.disconnect(); sequence = 0; policy = null; poses.clear(); reticle.hide();
     for (const mesh of actors.values()) dispose(mesh); actors.clear(); requested.clear(); latest = { actors: [] };
     $('start').disabled = true; $('status').textContent = 'Connecting…';
     socket = io({ auth: { sessionId: $('session').value, sync: true } }); const current = socket;
@@ -63,7 +66,8 @@ async function connect() {
             if (epoch === generation) current.emit('register_actor', registration);
         } catch (error) { $('status').textContent = error.message; }
     });
-    current.on('registration_accepted', () => {
+    current.on('registration_accepted', descriptor => {
+        aimOffset.set(descriptor.metadata.visualSize.x / 2, 0, descriptor.metadata.visualSize.z / 2);
         registered = policy?.physics.aircraftModel === 'assisted-flight-v1'; sequence = 0; $('start').disabled = false;
         $('status').textContent = policy?.physics.aircraftModel === 'assisted-flight-v1' ? 'Connected · assisted flight ready' : 'Server aircraft model differs; restart the server';
     });
@@ -93,12 +97,14 @@ function animate(now) {
     const dt = Math.min(0.1, (now - previous) / 1000); previous = now;
     if (keys.has('KeyW') || keys.has('KeyS')) { throttle = Math.max(0, Math.min(100, throttle + (keys.has('KeyW') ? 1 : -1) * dt * 30)); $('throttle').value = Math.round(throttle); }
     $('throttle-value').value = `${$('throttle').value}%`;
+    reticle.hide();
     for (const rendered of poses.sample(now)) {
         const { position, quaternion: q } = rendered;
         const mesh = actors.get(rendered.id); if (mesh) { mesh.position.copy(position); mesh.quaternion.copy(q); }
         if (rendered.id !== socket?.id) continue;
         const actor = latest.actors.find(a => a.id === rendered.id); if (!actor) continue;
         const forward = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+        if (registered) reticle.update(aimOffset.clone().applyQuaternion(q).add(position), forward);
         camera.position.lerp(position.clone().addScaledVector(forward, -13).add(new THREE.Vector3(0, 5, 0)), 1 - Math.exp(-5 * dt));
         camera.lookAt(position.clone().addScaledVector(forward, 7));
         $('telemetry').textContent = `Speed  ${Math.hypot(actor.velocity.x, actor.velocity.y, actor.velocity.z).toFixed(1)} m/s\nAltitude  ${actor.position.y.toFixed(1)} m\nVertical rate  ${actor.velocity.y.toFixed(1)} m/s\n${actor.grounded ? 'Ground contact' : 'Airborne'} · input ack ${actor.lastInputSequence}`;

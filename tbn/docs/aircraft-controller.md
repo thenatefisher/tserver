@@ -176,3 +176,7 @@ The built-in Flight Lab is available at `/fly`, also linked from `/admin`. It jo
 - `modules/server/public/fly.js`: direct player interface.
 
 Clients consume shared contracts and their own GLBs; they do not import server modules.
+
+## Terrain aiming preview
+
+Flight Lab projects a 3 m radius circular outline along the displayed aircraft's body +X nose direction, starting at the nose at mid-height. Its center is the first terrain intersection. A surface shader maps the circle onto the actual DTED triangles, so slopes/curvature deform the footprint naturally and terrain depth occludes it. It hides when the ray misses terrain, on session replacement, or while disconnected. The aim uses the same interpolated pose as the aircraft to avoid snapshot jitter. This is a visual straight-line aiming preview, not a projectile trajectory, damage region or new fire action. `modules/server/public/terrain-reticle.mjs` implements the reference projection.
