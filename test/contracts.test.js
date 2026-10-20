@@ -71,3 +71,11 @@ test('hit events are transient across schema-valid state broadcasts', () => {
     assert.deepEqual(session.snapshot().hitEvents, []);
     manager.close();
 });
+
+
+test('rocket controls are backward compatible and hardpoint directions reject zero vectors', () => {
+    const old=frame();delete old.fire;validate('actions',old);
+    validate('actions',frame({fire:true}));assert.throws(()=>validate('actions',frame({fire:1})));
+    const mesh=fixture();mesh.metadata.projectileOrigins=[{id:'wing',position:{x:0,y:0,z:0},direction:{x:0,y:0,z:0}}];
+    assert.throws(()=>validate('mesh',mesh));mesh.metadata.projectileOrigins[0].direction.x=1;validate('mesh',mesh);
+});

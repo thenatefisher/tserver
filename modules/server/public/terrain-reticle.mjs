@@ -36,19 +36,23 @@ export class TerrainReticle {
     }
     /** Detach the previous overlay and borrow a replacement surface; leave its geometry untouched. */
     setTerrain(terrain) {
-        this.hide(); this.overlay?.removeFromParent(); this.terrain = terrain; this.overlay = null;
-        if (!terrain) return;
-        this.overlay = new Mesh(terrain.geometry, this.material); this.overlay.visible = false;
-        this.overlay.renderOrder = 1; terrain.add(this.overlay);
+        this.hide(); for (const overlay of this.overlays || []) overlay.removeFromParent();
+        this.terrains = terrain ? (Array.isArray(terrain) ? terrain : [terrain]) : [];
+        this.terrain = this.terrains[0]; this.overlay = null; this.overlays = [];
+        for (const surface of this.terrains) {
+            const overlay = new Mesh(surface.geometry, this.material); overlay.visible = false;
+            overlay.renderOrder = 1; surface.add(overlay); this.overlays.push(overlay);
+        }
+        this.overlay = this.overlays[0];
     }
     /** Hide stale aim when disconnected, changing sessions or lacking a displayed aircraft. */
-    hide() { this.mode = 'hidden'; if (this.overlay) this.overlay.visible = false; }
+    hide() { this.mode = 'hidden'; for (const overlay of this.overlays || []) overlay.visible = false; }
     /** Raycast only terrain; project a circle perpendicular to aim, stretched naturally over slopes. */
     update(origin, direction) {
         this.hide(); if (!this.terrain) return null;
-        this.terrain.updateWorldMatrix(true, false);
+        for (const terrain of this.terrains) terrain.updateWorldMatrix(true, false);
         this.ray.set(origin, direction.clone().normalize());
-        const hit = this.ray.intersectObject(this.terrain, false)[0];
+        const hit = this.ray.intersectObjects(this.terrains, false)[0];
         if (!hit) { this.mode = 'sky'; return null; }
         // Inspect the nearest hit before applying the minimum range: skipping near
         // intersections in Raycaster could incorrectly reveal a farther ground marker.
@@ -58,9 +62,9 @@ export class TerrainReticle {
         this.material.uniforms.direction.value.copy(this.ray.ray.direction);
         // Bound the local projector volume, extending it at oblique incidence so the
         // complete circle can stretch along the ground without marking distant hills.
-        const normal = hit.face.normal.clone().transformDirection(this.terrain.matrixWorld);
+        const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
         this.material.uniforms.depth.value = this.material.uniforms.radius.value / Math.max(0.05, Math.abs(normal.dot(this.ray.ray.direction))) * 2;
-        this.overlay.visible = true;
+        for (const overlay of this.overlays) overlay.visible = true;
         return hit.point.clone();
     }
     /** Release only owned rendering resources; the terrain owner remains responsible for geometry. */

@@ -44,6 +44,7 @@ class ActorManager {
         actor.name = registration.descriptor.name;
         actor.clientType = registration.descriptor.clientType;
         actor.physicsProfile = { ...registration.physicsProfile };
+        actor.projectileOrigins = structuredClone(registration.descriptor.metadata.projectileOrigins);
         actor.body = createSolidBody(registration.body, this.density);
         this.place(actor);
         this.physics.addActor(actor);
@@ -71,7 +72,7 @@ class ActorManager {
             if (actualSize > MAX_VISUAL_SIZE[axis] || Math.abs(actualSize - metadata.visualSize[axis]) > 0.01) throw new Error('Declared visualSize does not match transformed GLB');
         }
         const body = createSolidBody(info, this.density);
-        const next = { ...actor, position: { ...actor.position }, body, name: input.name,
+        const next = { ...actor, projectileOrigins: structuredClone(metadata.projectileOrigins), position: { ...actor.position }, body, name: input.name,
             clientType: input.clientType, physicsProfile: { ...input.physicsProfile },
             action: normalizeAction(), lastInputSequence: -1 };
         this.place(next);

@@ -23,6 +23,21 @@ test('Flight Lab arrow keys bank toward their turn and retain original pitch map
     assert.equal(controls('ArrowRight').rotate.x, 1);
     assert.equal(controls('ArrowDown').rotate.y, -1);
     assert.equal(controls('ArrowUp').rotate.y, 1);
+    assert.equal(controls('Space').fire, true); assert.equal(controls('Space').brake, 0);
+    assert.equal(controls('KeyB').brake, 1); assert.equal(controls('KeyB').fire, false);
     const { validate } = require('../modules/contracts');
     validate('actions', controls('ArrowLeft'));
+});
+
+test('wrapped snapshots interpolate over the nearest seam image rather than across the map', async () => {
+    const { FlightPoses } = await import('../modules/server/public/flight-poses.mjs');
+    const { tileOffsets, nearestImage, boundarySample } = await import('../modules/server/public/world-wrap.mjs');
+    const { Vector3 } = await import('three');
+    const grid = {boundary:'wrap',width:1000,depth:1000,origin:{x:-500,z:-500},columns:2,rows:2,depthMap:[1,2,3,4]};
+    const poses = new FlightPoses(100); poses.setWorld(grid);
+    poses.push(state(499),0); poses.push(state(-499),100);
+    assert.equal(poses.sample(150)[0].position.x,500);
+    assert.equal(nearestImage(new Vector3(-490,20,0),new Vector3(490,0,0),grid).x,510);
+    assert.equal(tileOffsets(new Vector3(501,0,0),grid).length,9);
+    assert.equal(boundarySample(grid,2,2),1);
 });

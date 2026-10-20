@@ -301,3 +301,69 @@ test('coordinated bank turns preserve nose elevation and turn toward the lowered
         assert.equal(Math.sign(after.velocity.z), Math.sign(roll), 'right bank turns right; left bank turns left');
     }
 });
+
+test('wrapped worlds preserve motion across both seams and periodic terrain matches collision queries', t => {
+    const ground = new TerrainModel(createMap({ preset: 'flat' }).terrain);
+    const m = model(t, [actor({ position: { x: 499.9, y: 20, z: 499.9 }, velocity: { x: 20, y: 2, z: 20 } })], { gravity: 0, terrain: ground });
+    const moved = run(m, 0.1);
+    assert.ok(moved.position.x < -497 && moved.position.z < -497);
+    assert.ok(Math.abs(moved.velocity.x - 20) < 1e-4 && Math.abs(moved.velocity.y - 2) < 1e-4);
+    assert.ok(moved.position.y > 20);
+    const rolling = model(t, [actor({ position: { x: 496, y: 0, z: 0 } })], { terrain: ground });
+    const crossed = run(rolling, 1, { move: { x: 1 } });
+    assert.ok(crossed.position.x < -480); assert.ok(Math.abs(crossed.velocity.y) < 0.05);
+    const varied = new TerrainModel({ ...ground.grid, columns: 2, rows: 2, spacing: { x: 600, z: 600 }, depthMap: [0,100,200,400] });
+    const surface = model(t, [], { terrain: varied }); surface.step({}, 1/120);
+    for (const [x,z] of [[499,499],[501,501],[-501,-501],[450,-490]]) {
+        const hit = surface.world.castRay(new RAPIER.Ray({ x, y: 100, z }, { x:0,y:-1,z:0 }), 200, true);
+        assert.ok(hit); assert.ok(Math.abs(100-hit.timeOfImpact-varied.heightAt(x,z))<1e-4);
+    }
+});
+
+test('actors on opposite edges exchange momentum through periodic contact images', t => {
+    const ground = new TerrainModel(createMap({ preset: 'flat' }).terrain);
+    const m = model(t, [actor({ id:'a', position:{x:499,y:20,z:0}, velocity:{x:5,y:0,z:0} }),
+        actor({id:'b',position:{x:-499,y:20,z:0},velocity:{x:-5,y:0,z:0}})], {gravity:0,terrain:ground});
+    run(m,0.15); const [a,b]=m.getState().actors;
+    assert.ok(a.velocity.x<1 && b.velocity.x>-1, 'opposite-edge actors must collide before passing through');
+    assert.ok(Math.abs(a.velocity.x+b.velocity.x)<0.5, JSON.stringify([a.velocity,b.velocity]));
+    m.disableObjectCollisions(); assert.equal(m.periodicActors.images.size,0);
+});
+
+test('rockets alternate wings, ignore actor geometry and explode on non-actor solids with five-metre radius', t => {
+    const hardpoints=[{id:'left',position:{x:0,y:1.35,z:.66}},{id:'right',position:{x:0,y:-1.35,z:.66}}];
+    const shooter=actor({id:'pilot',position:{x:0,y:10,z:0},projectileOrigins:hardpoints,physicsProfile:{maxSpeed:40,controller:'aircraft'}});
+    const other=actor({id:'other',position:{x:10,y:10,z:-1.35}});
+    const m=model(t,[shooter,other],{gravity:0});
+    run(m,1/60,{fire:true});run(m,.2);
+    assert.equal(m.getState().projectiles.length,1);assert.ok(m.getState().projectiles[0].position.x>20);
+    assert.equal(m.getState().explosions.length,0,'actor meshes must not detonate rockets');
+    m.rocketTargets=[{x:40,y:10.66,z:-1.35,size:2}];run(m,.2);
+    assert.equal(m.getState().projectiles.length,0);
+    assert.equal(m.getState().explosions[0].radius,5);assert.ok(m.getState().actors.every(a=>a.health===100));
+    run(m,1/60,{fire:true});const second=m.getState().projectiles.find(p=>p.ownerId==='pilot');
+    assert.equal(second.hardpointId,'right');assert.ok(second.position.z>0);
+    const cadence=model(t,[shooter],{gravity:0});run(cadence,.7,{fire:true});
+    assert.deepEqual(cadence.getState().projectiles.map(p=>p.hardpointId),['left','right','left']);
+    const ground=model(t,[actor({...shooter,orientation:{x:0,y:.5,z:0,order:'XYZ'}})],{terrain:new TerrainModel(createMap({preset:'flat'}).terrain)});
+    run(ground,1/60,{fire:true});run(ground,.3);
+    assert.ok(ground.getState().explosions.some(e=>Math.abs(e.position.y)<.01));
+});
+
+test('rockets sweep across a wrapped seam and expire after their bounded lifetime', t => {
+    const shooter=actor({position:{x:499,y:20,z:0},projectileOrigins:[{id:'left',position:{x:0,y:0,z:.5}}],physicsProfile:{maxSpeed:40,controller:'aircraft'}});
+    const m=model(t,[shooter],{gravity:0,terrain:new TerrainModel(createMap({preset:'flat'}).terrain)});
+    m.rocketTargets=[{x:-498,y:20.5,z:0,size:1}];run(m,1/60,{fire:true});run(m,.05);
+    assert.equal(m.getState().projectiles.length,0);assert.ok(m.getState().explosions.length>0);
+    const empty=model(t,[shooter],{gravity:0});run(empty,1/60,{fire:true});run(empty,8.1);
+    assert.equal(empty.getState().projectiles.length,0);
+});
+
+
+test('rockets detonate against Rapier non-actor objects independently of actor collision diagnostics', t => {
+    const m=model(t,[actor({position:{x:0,y:10,z:0},projectileOrigins:[{id:'wing',position:{x:0,y:0,z:.5}}],physicsProfile:{maxSpeed:40,controller:'aircraft'}})],{gravity:0});
+    m.world.createCollider(RAPIER.ColliderDesc.cuboid(.2,1,1).setTranslation(15,10.5,0));
+    m.disableObjectCollisions();run(m,1/60,{fire:true});run(m,.2);
+    assert.equal(m.getState().projectiles.length,0);
+    assert.ok(m.getState().explosions.some(e=>Math.abs(e.position.x-14.8)<.01));
+});

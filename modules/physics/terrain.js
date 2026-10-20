@@ -5,22 +5,25 @@
  * Coupling: TerrainModel and client terrain guidance share the same triangle diagonal/boundary extension.
  */
 const { RAPIER } = require('./runtime');
-const { invariants } = require('../contracts');
+const { terrainPost } = require('../terrain/sampling');
+const { invariants, maxVisualSize } = require('../contracts');
 /** Allocate bounded-size collider chunks, omitting triangles touching no-data posts. */
 function createTerrainColliders(world, terrain, policy = {}) {
     const handles = new Set();
     if (!terrain) return handles;
     const g = terrain.grid, chunk = 64;
-    // Add a duplicate final post at the far boundary: wire grids remain half-open.
-    for (let r0 = 0; r0 < g.rows; r0 += chunk) for (let c0 = 0; c0 < g.columns; c0 += chunk) {
-        const nr = Math.min(chunk, g.rows - r0), nc = Math.min(chunk, g.columns - c0);
+    // A small periodic halo supports the full actor solid while its root crosses a seam.
+    const margin = Math.hypot(...Object.values(maxVisualSize));
+    const haloX = g.boundary === 'wrap' ? Math.ceil(margin / g.spacing.x) + 1 : 0;
+    const haloZ = g.boundary === 'wrap' ? Math.ceil(margin / g.spacing.z) + 1 : 0;
+    for (let r0 = -haloZ; r0 < g.rows + haloZ; r0 += chunk) for (let c0 = -haloX; c0 < g.columns + haloX; c0 += chunk) {
+        const nr = Math.min(chunk, g.rows + haloZ - r0), nc = Math.min(chunk, g.columns + haloX - c0);
         const vertices = [], indices = [], valid = [];
         for (let r = 0; r <= nr; r++) for (let c = 0; c <= nc; c++) {
             const row = r0 + r, col = c0 + c;
-            const sample = g.depthMap[Math.min(row, g.rows - 1) * g.columns + Math.min(col, g.columns - 1)];
-            valid.push(sample !== g.noDataValue && Number.isFinite(sample));
-            vertices.push(g.origin.x + Math.min(col * g.spacing.x, g.width), valid.at(-1) ? sample * g.elevationScale : 0,
-                g.origin.z + Math.min(row * g.spacing.z, g.depth));
+            const post = terrainPost(g, col, row);
+            valid.push(Number.isFinite(post.y));
+            vertices.push(post.x, valid.at(-1) ? post.y : 0, post.z);
         }
         for (let r = 0; r < nr; r++) for (let c = 0; c < nc; c++) {
             const a = r * (nc + 1) + c, b = a + 1, d = (r + 1) * (nc + 1) + c + 1, below = d - 1;

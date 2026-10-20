@@ -9,15 +9,18 @@ const { randomInt } = require('node:crypto');
 const { worldSize, elevationScale, validate } = require('../contracts');
 const { terrainPresets, presetElevation } = require('./presets');
 const { TerrainModel } = require('./model');
+const { schemas } = require('../contracts');
 const { HITBOX_SIZE } = require('../actors/constants');
+const { triangleHeight } = require('./sampling');
 /** Compute the deterministic procedural height for one coordinate and generation seed. */
 function elevation(x, z, seed) {
     x += seed % 997; z += Math.floor(seed / 997) % 991;
     return Math.sin(x / 12) * Math.cos(z / 12) * 2 + Math.sin(x / 30) * 3.5 + Math.cos(z / 25) * 2.5;
 }
 /** Generate a new half-open, integer-height grid using the configured seed and spacing. */
-function createDtedTerrain({ spacing = { x: 10, z: 10 }, seed, preset } = {}) {
+function createDtedTerrain({ spacing = { x: 10, z: 10 }, seed, preset, boundary = 'wrap' } = {}) {
     if (preset !== undefined && !terrainPresets.some(choice => choice.id === preset)) throw new Error('Unknown terrain preset');
+    if (!schemas.world.properties.terrain.properties.boundary.enum.includes(boundary)) throw new Error('Unknown terrain boundary policy');
     seed ??= preset ? 0 : randomInt(0x100000000);
     if (!Number.isFinite(spacing.x) || !Number.isFinite(spacing.z) || spacing.x <= 0 || spacing.z <= 0) throw new Error('Invalid terrain spacing');
     if (!Number.isSafeInteger(seed) || seed < 0 || seed >= 0x100000000) throw new Error('Invalid terrain seed');
@@ -27,10 +30,18 @@ function createDtedTerrain({ spacing = { x: 10, z: 10 }, seed, preset } = {}) {
     const origin = { x: -width / 2, z: -depth / 2 };
     const depthMap = Array.from({ length: rows * columns }, (_, index) => {
         const x = origin.x + (index % columns) * spacing.x, z = origin.z + Math.floor(index / columns) * spacing.z;
-        const height = preset ? presetElevation(preset, x, z, worldSize, seed) : elevation(x, z, seed);
+        /** Evaluate the chosen height function, including the neighboring tile continuation. */
+        const at = (px, pz) => preset ? presetElevation(preset, px, pz, worldSize, seed) : elevation(px, pz, seed);
+        // Blend the final border band toward the neighboring tile's continuation.
+        // This keeps recognizable preset interiors while removing a height step at the seam.
+        /** Smoothly join the border band without changing the preset interior. */
+        const blend = value => { value = Math.max(0, Math.min(1, value)); return value * value * (3 - 2 * value); };
+        const wx = boundary === 'wrap' ? blend((x - (origin.x + width - 50)) / 50) : 0;
+        const wz = boundary === 'wrap' ? blend((z - (origin.z + depth - 50)) / 50) : 0;
+        const height = (1-wx)*(1-wz)*at(x,z) + wx*(1-wz)*at(x-width,z) + (1-wx)*wz*at(x,z-depth) + wx*wz*at(x-width,z-depth);
         return Math.round(height / elevationScale);
     });
-    return { ...(preset ? { preset, seed } : {}), type: 'dted', width, depth, columns, rows, origin, spacing: { ...spacing }, elevationScale, depthMap };
+    return { ...(preset ? { preset, seed } : {}), type: 'dted', boundary, width, depth, columns, rows, origin, spacing: { ...spacing }, elevationScale, depthMap };
 }
 /** Validate the world schema and grid-length relationships; return input or throw. */
 function validateMap(map) {
@@ -41,6 +52,7 @@ function validateMap(map) {
 }
 /** Interpolate valid posts into metres, renormalizing around no-data samples. */
 function sampleTerrainHeight(terrain, x, z) {
+    if (terrain.boundary === 'wrap') return triangleHeight(terrain, x, z);
     const gx = Math.max(0, Math.min(terrain.columns - 1, (x - terrain.origin.x) / terrain.spacing.x));
     const gz = Math.max(0, Math.min(terrain.rows - 1, (z - terrain.origin.z) / terrain.spacing.z));
     const x0 = Math.floor(gx), z0 = Math.floor(gz), x1 = Math.min(x0 + 1, terrain.columns - 1), z1 = Math.min(z0 + 1, terrain.rows - 1);
@@ -64,8 +76,10 @@ function generateTargets(terrain) {
 /** Generate a new schema-valid world with derived bounds and practice targets. */
 function createMap(options) {
     const terrain = createDtedTerrain(options);
+    const insetX = terrain.boundary === 'wrap' ? 0 : HITBOX_SIZE.x / 2;
+    const insetZ = terrain.boundary === 'wrap' ? 0 : HITBOX_SIZE.y / 2;
     return validateMap({ size: { ...worldSize }, terrain,
-        bounds: { minX: -worldSize.x / 2 + HITBOX_SIZE.x / 2, maxX: worldSize.x / 2 - HITBOX_SIZE.x / 2, minZ: -worldSize.z / 2 + HITBOX_SIZE.y / 2, maxZ: worldSize.z / 2 - HITBOX_SIZE.y / 2 },
+        bounds: { minX: terrain.origin.x + insetX, maxX: terrain.origin.x + terrain.width - insetX, minZ: terrain.origin.z + insetZ, maxZ: terrain.origin.z + terrain.depth - insetZ },
         walls: [], ramps: [], targets: generateTargets(terrain) });
 }
 /** Replace only the world’s target list in place; return the same world wrapper. */

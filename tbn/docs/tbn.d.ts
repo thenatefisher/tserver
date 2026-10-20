@@ -103,6 +103,8 @@ export interface DtedTerrainData {
   /** Optional metadata only; render transmitted elevations, never regenerate from preset/seed. */
   preset?: TerrainPresetId;
   seed?: number;
+  /** wrap repeats opposite X/Z edges; absent/extend is legacy bounded terrain. */
+  boundary?: 'wrap' | 'extend';
   type: 'dted';
   width: number;
   depth: number;
@@ -138,13 +140,16 @@ export interface ActionInput {
   brake: number;
   /** Grounded false-to-true request; held true does not repeat. */
   jump: boolean;
+  /** Optional held rocket trigger; missing is false; requires registered hardpoints. */
+  fire?: boolean;
 }
 
 export interface ProtocolInfo {
   protocolVersion: 2;
   inputTimeoutSeconds: number;
   /** Effective server-owned physics policy, including waterLevel (world Y). */
-  physics: Record<string, number | string>;
+  physics: Record<string, number | string | boolean>;
+  weapons?: Record<string, number | boolean>;
 }
 
 /** Session collision diagnostic policy, sent on join and admin changes. */
@@ -171,7 +176,9 @@ export interface ActorState {
 
 export interface GameStateUpdate {
   actors: ActorState[];
-  projectiles: Array<{ id: string; position: Vec3; velocity: Vec3 }>;
+  projectiles: Array<{ id: string; position: Vec3; velocity: Vec3; ownerId?: string; hardpointId?: string; age?: number }>;
+  /** Full short-lived visual effects; deduplicate IDs, no blast damage. */
+  explosions?: Array<{ id: string; position: Vec3; radius: number; age: number }>;
   /** New events since the previous broadcast; deduplicate by id. */
   hitEvents: PlayerHitEvent[];
 }

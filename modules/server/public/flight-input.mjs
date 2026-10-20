@@ -10,5 +10,5 @@ export function flightInput(keys, throttle, protocolVersion, sequence) {
     return { protocolVersion, sequence, move: { x: throttle / 100, y: 0, z: 0 },
         // Positive body roll raises the left wing, so LEFT must send negative X.
         rotate: { x: axis('ArrowRight', 'ArrowLeft'), y: axis('ArrowUp', 'ArrowDown'), z: axis('KeyQ', 'KeyE') },
-        brake: keys.has('Space') ? 1 : 0, jump: false };
+        brake: keys.has('KeyB') ? 1 : 0, jump: false, fire: keys.has('Space') };
 }

@@ -270,4 +270,10 @@ test('Flight Lab asset registers through the player contract and advertises assi
     const state = event(player, 'state', value => value.actors.some(a => a.id === player.id && a.lastInputSequence === 0));
     player.emit('action', frame({ move: { x: 0.5 }, sequence: 0 }));
     assert.ok((await state).actors.find(a => a.id === player.id).velocity.x > 0);
+    assert.equal(player.protocolInfo.weapons.explosionRadius, 5);
+    const shot = event(player, 'state', value => value.projectiles.some(p => p.ownerId === player.id));
+    player.emit('action', frame({ sequence: 1, fire: true }));
+    const armed = await shot;
+    assert.equal(armed.projectiles.find(p => p.ownerId === player.id).hardpointId, 'left');
+    assert.ok(Array.isArray(armed.explosions));
 });

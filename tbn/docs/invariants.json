@@ -99,7 +99,7 @@
     "resolutionConfigurable": true,
     "elevationScale": 0.1,
     "storedElevationType": "integer",
-    "boundaryConvention": "half-open",
+    "boundaryConvention": "half-open; boundary=wrap repeats first posts at far edges",
     "columnsFormula": "ceil(width / spacing.x)",
     "rowsFormula": "ceil(depth / spacing.z)",
     "depthMapLengthFormula": "rows * columns",
@@ -114,7 +114,7 @@
       "rows": 4000,
       "sampleCount": 16000000
     },
-    "collisionTopology": "triangles (a,c,b) and (b,c,d); last row/column extended to far boundary",
+    "collisionTopology": "triangles (a,c,b) and (b,c,d); wrap copies first posts at far edges, legacy extend copies last",
     "replacementPolicy": "fixedDuringGameplay; adminFlattenOrPresetReplacesSnapshotAndColliders",
     "presetContract": "tbn/schemas/world.schema.json#/properties/terrain/properties/preset"
   },
@@ -236,5 +236,15 @@
     "aircraftBankTurnRate": 0.6,
     "aircraftTakeoffVerticalSpeed": 0.5,
     "aircraftTakeoffSpeed": 5
+  },
+  "weapons": {
+    "rocketIntervalSeconds": 0.25,
+    "rocketSpeed": 120,
+    "rocketLifetimeSeconds": 8,
+    "maxRockets": 512,
+    "explosionRadius": 5,
+    "explosionSeconds": 1.2,
+    "rocketActorCollisions": false,
+    "explosionDamage": false
   }
 }

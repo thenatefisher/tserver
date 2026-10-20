@@ -82,6 +82,11 @@
     },
     "jump": {
       "type": "boolean"
+    },
+    "fire": {
+      "type": "boolean",
+      "default": false,
+      "description": "Optional held rocket trigger. Missing is false. Server cadence, alternating registered projectileOrigins; no actor geometry collisions or blast damage. See docs/rockets.md."
     }
   }
 }

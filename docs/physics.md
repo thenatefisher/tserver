@@ -26,7 +26,7 @@ The model buffers elapsed time and advances fixed 1/120 s steps, four per nomina
 
 The model consumes newer complete control frames, records their sequence/time, and neutralizes effort after 250 ms of simulation time without a newer frame. The network boundary rejects duplicate/out-of-order sequence numbers; duplicates do not refresh lifetime. Sequence resets on registration/session transfer. Jump edges are consumed once; airborne presses are not buffered. Timeout counts as release.
 
-Each substep clears previous control forces/torques (Rapier forces otherwise persist), evaluates actual terrain support manifolds, applies the selected controller, steps Rapier, then projects state. Active controls wake bodies. World bounds and maximum COM speed are enforced after each substep; bounds apply to actor root X/Z. The maximum angular speed is server policy. Finite contact tolerances permit small penetration.
+Each substep clears previous control forces/torques (Rapier forces otherwise persist), evaluates actual terrain support manifolds, applies the selected controller, steps Rapier, then projects state. Active controls wake bodies. Maximum COM speed is enforced after each substep. Wrapped terrain canonicalizes actor roots modulo width/depth without changing motion; legacy bounded terrain still clamps roots. The maximum angular speed is server policy. Finite contact tolerances permit small penetration.
 
 ## Contacts and controllers
 
@@ -38,7 +38,7 @@ Hover mode has all-axis thrust, upright stabilization and terrain-relative COM h
 
 ## Terrain
 
-Every new session generates a random-seeded terrain unless a map/seed is supplied. Each DTED snapshot is deeply frozen; explicit admin flatten or preset selection can replace it. Static triangle colliders are generated in 64-cell chunks. They use triangles (a,c,b), (b,c,d), with the last sample heights extended to the far boundary. Triangles touching missing samples are omitted, leaving holes. TerrainModel height queries use that same triangle diagonal; the standalone terrain module's historical bilinear helper is retained only for nonphysical convenience/target generation. Spawn placement uses TerrainModel, not that bilinear helper.
+Every new session generates a random-seeded terrain unless a map/seed is supplied. Each DTED snapshot is deeply frozen; explicit admin flatten or preset selection can replace it. Static triangle colliders are generated in 64-cell chunks. They use triangles (a,c,b), (b,c,d), with first posts repeated at far edges for wrapped grids and last-post extension for legacy grids. A periodic collider halo supports edge-crossing actor shapes. Triangles touching missing samples are omitted, leaving holes. TerrainModel height queries use that same triangle diagonal; the standalone terrain module's historical bilinear helper is retained only for nonphysical convenience/target generation. Spawn placement uses TerrainModel, not that bilinear helper.
 
 Practice target resets version the world wrapper but retain identical terrain samples and collider instances. Actor motion, collision geometry and resource ownership are independent across sessions.
 
@@ -83,3 +83,7 @@ Ground/mecha controllers retain low powered rolling resistance (0.6 m/s²), but 
 ## Reverse steering
 
 Supported ground/mecha yaw torque follows the sign of longitudinal COM speed projected onto the terrain tangent forward axis. At speeds below `steeringReverseThreshold` (0.1 m/s by default), throttle direction supplies the sign. This preserves correct steering while coasting backward or braking toward a direction change and provides reverse steering from rest. Airborne attitude control is unchanged; clients must not apply a second inversion.
+
+## Periodic worlds and rockets
+
+Generated maps use `terrain.boundary="wrap"`; see `tbn/docs/world-wrapping.md`. Near-edge actor contact images reuse mass/shape/actuation and are hidden from snapshots. Independent paired seam contact constraints are approximate, so exact global conservation across simultaneous contact islands is not guaranteed. Terrain-only mode removes the images. `physics/rockets.js` owns cadence, hardpoint alternation, swept impacts, periodic trajectories and visual explosion state; actors are excluded from rocket collisions and no blast damage is applied. See `tbn/docs/rockets.md`.

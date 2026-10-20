@@ -79,7 +79,7 @@ class ClientSockets {
         if (!client.admin && client.registration) session.actors.attach(socket.id, client.address, client.registration);
         session.snapshot();
         socket.emit(client.admin || client.registration ? 'session_joined' : 'session_selected', { sessionId: session.id, name: session.name });
-        socket.emit('protocol_info', { protocolVersion, inputTimeoutSeconds: invariants.input.inputTimeoutSeconds, physics: { ...invariants.physics, ...session.physics.environment, terrain: undefined, groundHeight: undefined, bounds: undefined } });
+        socket.emit('protocol_info', { protocolVersion, inputTimeoutSeconds: invariants.input.inputTimeoutSeconds, weapons: invariants.weapons, physics: { ...invariants.physics, ...session.physics.environment, terrain: undefined, groundHeight: undefined, bounds: undefined } });
         socket.emit('terrain_presets', { sessionId: session.id, presets: terrainPresets, selected: session.data.map.terrain.preset || null });
         socket.emit('collision_settings', { sessionId: session.id, terrainOnlyCollisions: session.physics.terrainOnlyCollisions });
         socket.emit('init', socket.id);

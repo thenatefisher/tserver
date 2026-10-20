@@ -35,7 +35,27 @@
                 "$ref": "#/definitions/projectilePosition"
               },
               "direction": {
-                "$ref": "#/definitions/vector3"
+                "description": "Optional nonzero body-space firing direction; server normalizes it. Missing means +X.",
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/vector3"
+                  },
+                  {
+                    "not": {
+                      "properties": {
+                        "x": {
+                          "const": 0
+                        },
+                        "y": {
+                          "const": 0
+                        },
+                        "z": {
+                          "const": 0
+                        }
+                      }
+                    }
+                  }
+                ]
               }
             }
           }

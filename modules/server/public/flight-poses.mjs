@@ -5,6 +5,7 @@
  * Side effects: Retains at most 12 snapshots; clear discards interpolation history.
  * Coupling: Three.js quaternion math, the shared Euler/body basis contract, and fly.js rendering.
  */
+import { nearestImage } from './world-wrap.mjs';
 import { Vector3, Quaternion, Euler } from 'three';
 const basis = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -Math.PI / 2);
 /** Convert one wire actor into an independent render pose without mutating its authoritative state. */
@@ -16,11 +17,18 @@ function pose(actor) {
 export class FlightPoses {
     /** Own a small receipt-time buffer; delay hides normal 15 Hz snapshot spacing/jitter. */
     constructor(delay = 100) { this.delay = delay; this.frames = []; }
+    /** Adopt the received boundary contract without discarding ongoing unwrapped display coordinates. */
+    setWorld(grid) { this.grid = grid; }
     /** Remove history after reconnect/session transfer or an explicit world repositioning. */
     clear() { this.frames.length = 0; }
     /** Store independent actor poses; coalesce equal local receipt times and bound retained memory. */
     push(state, time) {
-        const frame = { time, actors: new Map(state.actors.map(actor => [actor.id, pose(actor)])) };
+        const previous = this.frames.at(-1)?.actors;
+        const frame = { time, actors: new Map(state.actors.map(actor => {
+            const next = pose(actor), last = previous?.get(actor.id);
+            if (last) next.position.copy(nearestImage(next.position, last.position, this.grid));
+            return [actor.id, next];
+        })) };
         if (this.frames.at(-1)?.time === time) this.frames.pop();
         this.frames.push(frame); if (this.frames.length > 12) this.frames.shift();
     }

@@ -10,9 +10,12 @@ const { normalizeAction } = require('./actions');
 const { createTerrainColliders, terrainSupport } = require('./terrain');
 const { terrainContact } = require('./contacts');
 const { terrainOnlyCollisionPolicy } = require('./collision-policy');
+const { Rockets } = require('./rockets');
+const { PeriodicActors } = require('./periodic-actors');
 const { applyController } = require('./controllers');
 const { worldQuaternion, bodyOrientation, rotateVector } = require('./rotation');
 const { vector, add, scale, cross, dot, clampVector } = require('./vector');
+const { wrap } = require('../terrain/sampling');
 const { invariants } = require('../contracts');
 
 /** Copy mutable state vectors/arrays while sharing immutable registered body geometry. */
@@ -21,14 +24,14 @@ function cloneState(state = {}) {
         position: vector(actor.position), velocity: vector(actor.velocity),
         ...(actor.centerVelocity ? { centerVelocity: vector(actor.centerVelocity) } : {}), orientation: { ...actor.orientation },
         rotationalRates: vector(actor.rotationalRates) })),
-        projectiles: structuredClone(state.projectiles || []), hitEvents: structuredClone(state.hitEvents || []) };
+        projectiles: structuredClone(state.projectiles || []), explosions: structuredClone(state.explosions || []), hitEvents: structuredClone(state.hitEvents || []) };
 }
 
 class PhysicsModel {
     /** Queue initial actors, load WASM once and expose ready; construction never starts a timer. */
     constructor(state, unused, environment = {}) {
         this.state = cloneState(state); this.environment = environment; this.records = new Map();
-        this.terrainOnlyCollisions = false;
+        this.terrainOnlyCollisions = false; this.rockets = new Rockets(); this.rocketTargets = [];
         this.time = 0; this.accumulator = 0; this.closed = false;
         if (isInitialized()) { this.initialize(); this.ready = Promise.resolve(this); }
         else this.ready = initializePhysics().then(() => { if (!this.closed) this.initialize(); return this; });
@@ -40,6 +43,7 @@ class PhysicsModel {
         this.world.integrationParameters.maxCcdSubsteps = 4;
         this.terrainHandles = createTerrainColliders(this.world, this.environment.terrain, this.environment);
         for (const actor of this.state.actors) this.createBody(actor);
+        this.periodicActors = new PeriodicActors(this.world);
     }
     /** Build a convex decomposition from validated GLB and explicitly retain volume mass/box COM/inertia. */
     createBody(actor) {
@@ -94,9 +98,13 @@ class PhysicsModel {
                 const frame = active ? record.frame : normalizeAction();
                 const support = terrainSupport(this.world, record.collider, this.terrainHandles, record.rb.linvel());
                 applyController(record, frame, support, h, this.environment);
+                this.rockets.fire(record, frame, this.time);
             }
+            this.periodicActors.sync(this.records, this.environment.terrain?.grid, this.terrainHandles, this.terrainOnlyCollisions);
             this.world.step();
             for (const record of this.records.values()) this.readBody(record);
+            this.rockets.step(this.world, this.records, this.periodicActors.images, this.environment.terrain, this.rocketTargets, h);
+            this.state.projectiles = this.rockets.projectiles; this.state.explosions = this.rockets.explosions;
             this.time += h; this.accumulator -= h;
         }
         return this.getState();
@@ -108,7 +116,13 @@ class PhysicsModel {
         rb.setLinvel(clampVector(rb.linvel(), maxSpeed), false);
         rb.setAngvel(clampVector(rb.angvel(), this.environment.maxAngularSpeed ?? invariants.physics.maxAngularSpeed), false);
         const position = { ...rb.translation() }, bounds = this.environment.bounds;
-        if (bounds) {
+        const grid = this.environment.terrain?.grid;
+        if (grid?.boundary === 'wrap') {
+            const x = wrap(position.x, grid.origin.x, grid.width), z = wrap(position.z, grid.origin.z, grid.depth);
+            if (x !== position.x || z !== position.z) {
+                position.x = x; position.z = z; rb.setTranslation(position, true);
+            }
+        } else if (bounds) {
             const v = { ...rb.linvel() }; let changed = false;
             for (const [axis, lo, hi] of [['x', 'minX', 'maxX'], ['z', 'minZ', 'maxZ']]) {
                 const clamped = Math.max(bounds[lo], Math.min(bounds[hi], position[axis]));
@@ -142,12 +156,14 @@ class PhysicsModel {
     /** Disable every object-to-object collision for this session while preserving terrain contacts and mass. */
     disableObjectCollisions() {
         if (!this.world || this.closed) throw new Error('Physics is not ready');
-        this.terrainOnlyCollisions = true;
+        this.periodicActors.clear(); this.terrainOnlyCollisions = true;
         return terrainOnlyCollisionPolicy(this.world, this.terrainHandles);
     }
     /** Swap static terrain, safely place actors above its surface and clear motion/input without resetting sequences. */
     replaceTerrain(terrain, sequences = {}) {
         if (!this.world || this.closed) throw new Error('Physics is not ready');
+        this.periodicActors.clear(); this.rockets.clear();
+        this.state.projectiles = []; this.state.explosions = [];
         const handles = createTerrainColliders(this.world, terrain, this.environment);
         // Build replacements before removing old colliders; all operations run within one server turn.
         for (const handle of this.terrainHandles) this.world.removeCollider(this.world.getCollider(handle), false);

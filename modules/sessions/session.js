@@ -29,6 +29,7 @@ class GameSession extends EventEmitter {
             gravity: invariants.input.standardGravityMetersPerSecondSquared, density: invariants.physics.density,
             ...environment, bounds: map.bounds, terrain: this.terrain
         });
+        this.physics.rocketTargets = this.data.map.targets || [];
         this.actors = new ActorManager(this.data, this.physics, { density: environment.density ?? invariants.physics.density, terrain: this.terrain });
         this.timers = [];
     }
@@ -39,7 +40,7 @@ class GameSession extends EventEmitter {
         const state = this.physics.getState();
         const publicState = {
             actors: state.actors.map(({ id, name, health, position, velocity, orientation, rotationalRates, grounded = false, lastInputSequence = -1 }) => ({ id, name, health, position, velocity, orientation, rotationalRates, grounded, lastInputSequence })),
-            projectiles: state.projectiles,
+            projectiles: state.projectiles, explosions: state.explosions || [],
             hitEvents: this.hitEvents.splice(0)
         };
         validate('state', publicState);
@@ -58,14 +59,14 @@ class GameSession extends EventEmitter {
     }
     /** Replace practice targets and republish the world wrapper; the terrain grid/model stays identical. */
     resetTargets() {
-        resetTargets(this.data.map);
+        resetTargets(this.data.map); this.physics.rocketTargets = this.data.map.targets;
         this.data.set('terrain', this.data.map);
         this.emit('data_changed');
     }
     /** Remove practice targets from this session and publish an updated world resource. */
     removeTargets() {
         const removed = this.data.map.targets?.length || 0;
-        this.data.map.targets = [];
+        this.data.map.targets = []; this.physics.rocketTargets = [];
         const version = this.data.set('terrain', this.data.map);
         this.emit('data_changed');
         return { sessionId: this.id, removed, version };
@@ -85,7 +86,7 @@ class GameSession extends EventEmitter {
         Object.defineProperty(this, 'terrain', { value: terrain });
         this.actors.terrain = terrain;
         map.terrain = terrain.grid;
-        const version = this.data.replaceTerrain(map);
+        const version = this.data.replaceTerrain(map); this.physics.rocketTargets = map.targets || [];
         for (const moved of state.actors) {
             const actor = this.data.actors.get(moved.id);
             Object.assign(actor, moved, { action: normalizeAction({ sequence: sequences[moved.id] }) });
@@ -97,7 +98,7 @@ class GameSession extends EventEmitter {
     previewTerrainPreset(preset) {
         if (typeof preset !== 'string') throw new Error('Terrain preset ID must be a string');
         return { sessionId: this.id, preset, baseVersion: this.data.resources.get('terrain').version,
-            terrain: createDtedTerrain({ preset, spacing: this.data.map.terrain.spacing, seed: this.data.map.terrain.seed ?? 0 }) };
+            terrain: createDtedTerrain({ preset, spacing: this.data.map.terrain.spacing, seed: this.data.map.terrain.seed ?? 0, boundary: this.data.map.terrain.boundary || 'extend' }) };
     }
     /** Apply the same grid used by previews; other sessions and this session's target visibility are preserved. */
     setTerrainPreset(preset) {

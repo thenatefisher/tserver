@@ -13,7 +13,24 @@
         "y": 3,
         "z": 0.95
       },
-      "projectileOrigins": []
+      "projectileOrigins": [
+        {
+          "id": "left",
+          "position": {
+            "x": 0.1,
+            "y": 1.35,
+            "z": 0.66
+          }
+        },
+        {
+          "id": "right",
+          "position": {
+            "x": 0.1,
+            "y": -1.35,
+            "z": 0.66
+          }
+        }
+      ]
     }
   }
 }

@@ -28,6 +28,13 @@
         "$ref": "#/definitions/hitEvent"
       },
       "description": "Hit events accumulated since the previous broadcast; empty when none occurred. Deduplicate by event id. These are transient events, not historical hits repeated every snapshot."
+    },
+    "explosions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/explosion"
+      },
+      "description": "Full short-lived visual explosion set. Deduplicate by id; age is simulation seconds, radius is metres, not damage."
     }
   },
   "definitions": {
@@ -147,6 +154,16 @@
         "velocity": {
           "$ref": "#/definitions/vector3",
           "description": "World-space velocity in meters per second."
+        },
+        "ownerId": {
+          "type": "string"
+        },
+        "hardpointId": {
+          "type": "string"
+        },
+        "age": {
+          "type": "number",
+          "minimum": 0
         }
       }
     },
@@ -182,6 +199,31 @@
         "hitLocation": {
           "$ref": "#/definitions/vector3",
           "description": "World-space impact position in meters."
+        }
+      }
+    },
+    "explosion": {
+      "type": "object",
+      "required": [
+        "id",
+        "position",
+        "radius",
+        "age"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/definitions/vector3"
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "age": {
+          "type": "number",
+          "minimum": 0
         }
       }
     }

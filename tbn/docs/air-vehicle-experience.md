@@ -22,7 +22,8 @@ Prefer direct mappings to the server's built-in assistance. Clients do not need 
 | Down Arrow | `rotate.y = -1`: nose up (pull back) |
 | Up Arrow | `rotate.y = +1`: nose down (push forward) |
 | Q / E | Optional yaw trim: `rotate.z = +1 / -1` respectively |
-| Space | `brake = 1` while held; release restores the throttle's target speed |
+| Space | Hold `fire = true` for rockets when valid hardpoints are registered |
+| B | `brake = 1` while held; release restores the throttle's target speed |
 | Escape / Stop controls | Clear held inputs and set target-speed fraction to zero |
 
 These mappings deliberately preserve conventional pitch controls and intuitive left/right turns. Positive roll raises the left wing; do not accidentally map Left Arrow to positive roll. Server bank coordination already turns toward the lowered wing without adding nose elevation changes. Do not invert steering because the actor is an aircraft or apply the ground reverse-steering convention to it.
@@ -39,7 +40,7 @@ Server snapshots arrive around 15 Hz. Render at browser animation-frame rate and
 
 Render terrain from the received DTED data, including the server triangle topology, scale, edges and no-data holes, and render every actor from its registered GLB. Rebuild on terrain replacement and clear display history after terrain repositioning or connection/session lifecycle resets. Preserve input sequences after admin terrain changes as specified in the common protocol. A grid/horizon, restrained terrain contrast and clear aircraft silhouette make motion and attitude easier to read; adapt presentation for 2D/ASCII requests while keeping these control semantics.
 
-For an aiming experience, a useful optional cue is a circular reticle projected along body +X onto the first terrain intersection, as in Flight Lab. Map the outline onto the actual terrain surface rather than floating a flat ring above it; show a red boresight circle when aim misses terrain, suppress hits nearer than 5 m, and use the displayed aircraft pose for smooth motion. Keep this visual preview distinct from ballistic trajectories or hit guarantees. It does not introduce a `fire` action.
+For an aiming experience, a useful optional cue is a circular reticle projected along body +X onto the first terrain intersection, as in Flight Lab. Map the outline onto the actual terrain surface rather than floating a flat ring above it; show a red boresight circle when aim misses terrain, suppress hits nearer than 5 m, and use the displayed aircraft pose for smooth motion. Keep this visual preview distinct from ballistic trajectories or hit guarantees. For an armed experience, use the optional held `fire` field and server ordnance state described in [rockets.md](rockets.md).
 
 ## Vehicle assets and useful feedback
 
@@ -58,3 +59,5 @@ Keep a compact HUD with target speed/throttle, actual speed, altitude, vertical 
 - Registration, complete frames, GLB and JSON pass the shared validation and existing conformance workflow. The client starts through `node client.js` and remains independent of server implementation files.
 
 Use the Flight Lab's control feel as the default. Reserve aircraft tuning panels and client autopilot construction for users who request them; a basic flying experience should be immediately usable.
+
+Honor [world wrapping](world-wrapping.md) for camera, actors, terrain, aiming and effects. The optional Flight Lab rocket presentation uses alternating wing hardpoints, expanding puffy smoke and five-metre visual explosions; see [rockets.md](rockets.md). Do not treat blast visuals as actor damage. Bank is the primary turn input with automatic yaw coordination, preserving nose elevation.

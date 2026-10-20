@@ -17,7 +17,7 @@ Send Socket.IO `action` at 30 Hz, including when controls are neutral:
 }
 ```
 
-All fields and all vector components are required. `move` and `rotate` are independent per-axis normalized control effort in [-1, 1], not direct acceleration/velocity assignments, world direction, target orientation, or guaranteed motion. Aircraft assisted-flight-v1 interprets these fractions as target speed/body rates; other modes use controller effort. Do not normalize the six axes together. `brake` is [0, 1]; `jump` is boolean. Unknown fields and nonfinite/out-of-range values are rejected with `request_rejected`; the previous valid frame remains in effect until timeout. No `fire` action exists.
+All fields and all vector components are required. `move` and `rotate` are independent per-axis normalized control effort in [-1, 1], not direct acceleration/velocity assignments, world direction, target orientation, or guaranteed motion. Aircraft assisted-flight-v1 interprets these fractions as target speed/body rates; other modes use controller effort. Do not normalize the six axes together. `brake` is [0, 1]; `jump` is boolean. Unknown fields and nonfinite/out-of-range values are rejected with `request_rejected`; the previous valid frame remains in effect until timeout. Optional `fire` is a held rocket trigger (missing=false); see [rockets.md](rockets.md).
 
 Body axes are +X forward, +Y left, +Z up. Positive rotations obey the right-hand rule: X roll, Y pitch, Z yaw. In particular, positive pitch turns +X toward -Z (nose down); a conventional “pull up” control sends negative `rotate.y`. Positive yaw turns left for body-axis attitude control. Supported ground/mecha yaw is steering: the same input reverses yaw response while traveling backward. At zero heading, world forward is +X and left is -Z.
 
@@ -107,3 +107,7 @@ Supported ground/mecha steering reverses with actual backward longitudinal motio
 ## Aircraft controller details
 
 For exact aircraft torque/inertia/damping, assisted speed/rate servo equations, COM state reconstruction, timing limits and client stability/altitude/airspeed hold guidance, read [aircraft-controller.md](aircraft-controller.md). The guide distinguishes existing state fields from missing timestamps/latency telemetry.
+
+## Wrapped worlds and weapons
+
+New maps use `terrain.boundary:"wrap"`; follow [world-wrapping.md](world-wrapping.md) for seam geometry, canonical coordinates, interpolation and camera continuity. Existing maps without it retain legacy boundaries. Armed clients may send optional `fire`; follow [rockets.md](rockets.md). Flight Lab uses Space to fire and B to brake. Server bank assistance supplies coordinated yaw while preserving nose elevation.

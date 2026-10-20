@@ -13,7 +13,7 @@ Sampling excludes the far boundary:
 - `rows = Math.ceil(depth / spacing.z)`
 - `depthMap.length = rows * columns`
 
-For a 1000 m extent at 0.25 m spacing, this is **4000 × 4000 posts**, or **16,000,000 samples**. With origin (-500, -500), the last post is at (499.75, 499.75). A grid including both boundaries would need 4001 posts per axis instead. Clients clamp interpolation to the last available post at the far edge.
+For a 1000 m extent at 0.25 m spacing, this is **4000 × 4000 posts**, or **16,000,000 samples**. With origin (-500, -500), the last post is at (499.75, 499.75). A grid including both boundaries would need 4001 posts per axis instead. For `boundary:"wrap"`, the synthetic far edge repeats the first posts, making neighboring tiles join. Missing/`extend` retains last-post extension. See [world-wrapping.md](world-wrapping.md).
 
 Validate these arithmetic relationships separately; draft-07 JSON Schema cannot multiply fields or derive array lengths from other properties. For terrain covering the full world, width and depth must match world size.x and size.z.
 
@@ -31,28 +31,32 @@ const y = sample * terrain.elevationScale;
 
 ## Mesh topology
 
-The transmitted grid remains half-open. For collision/rendering, construct (rows+1) × (columns+1) vertices: append a boundary column at `origin.x + width` and a boundary row at `origin.z + depth`, copying the last available heights. Interior vertex coordinates are `origin + index * spacing`; clamp boundary positions to the exact width/depth. Each of rows × columns cells has corners a=(col,row), b=(col+1,row), c=(col,row+1), d=(col+1,row+1). Use upward triangles **(a,c,b)** and **(b,c,d)**, splitting along the b-to-c diagonal. Omit a triangle if any of its posts is noData; this leaves a physical/rendered hole. The server allocates bounded collider chunks, but chunking must not change the diagonal or heights.
+The transmitted grid remains half-open. For collision/rendering, construct (rows+1) × (columns+1) vertices: append a boundary column at `origin.x + width` and a boundary row at `origin.z + depth`, copying the first row/column for `boundary:"wrap"`, or the last available heights otherwise. Interior vertex coordinates are `origin + index * spacing`; clamp boundary positions to the exact width/depth. Each of rows × columns cells has corners a=(col,row), b=(col+1,row), c=(col,row+1), d=(col+1,row+1). Use upward triangles **(a,c,b)** and **(b,c,d)**, splitting along the b-to-c diagonal. Omit a triangle if any of its posts is noData; this leaves a physical/rendered hole. The server allocates bounded collider chunks, but chunking must not change the diagonal or heights.
 
 Bilinear interpolation generally does not lie on these triangles. For physical placement previews use the triangular interpolation below. Snapshot actor Y/attitude is always authoritative. You may use lower-detail distant rendering, but keep the collision-resolution mesh near actors. Terrain is generated once per new session and remains fixed unless an admin explicitly flattens it or selects another preset; target resets do not deform it.
 
 ## Triangular height sampling
 
-The result is world Y in meters, or NaN for an unusable triangle. Boundary cells have duplicated heights, so interpolation extends the final samples to the map edge.
+The result is world Y in meters, or NaN for an unusable triangle. Wrapped boundary cells join the final posts to the first posts of the next tile. Legacy boundary cells duplicate final heights. Divide interpolation fractions by the actual final cell length when width/depth is not divisible by spacing.
 
 ```javascript
 function sampleTerrainHeight(x, z, t) {
-    const gx = Math.max(0, Math.min(t.columns, (x - t.origin.x) / t.spacing.x));
-    const gz = Math.max(0, Math.min(t.rows, (z - t.origin.z) / t.spacing.z));
-    const col = Math.min(t.columns - 1, Math.floor(gx));
-    const row = Math.min(t.rows - 1, Math.floor(gz));
-    const tx = Math.min(1, gx - col), tz = Math.min(1, gz - row);
-    const at = (c, r) => {
-        const v = t.depthMap[Math.min(r, t.rows - 1) * t.columns + Math.min(c, t.columns - 1)];
-        return v === t.noDataValue ? NaN : v * t.elevationScale;
+    const periodic = t.boundary === 'wrap';
+    const wrap = (v,o,L) => o + ((v-o)%L+L)%L;
+    x = periodic ? wrap(x,t.origin.x,t.width) : Math.max(t.origin.x,Math.min(x,t.origin.x+t.width));
+    z = periodic ? wrap(z,t.origin.z,t.depth) : Math.max(t.origin.z,Math.min(z,t.origin.z+t.depth));
+    const c = Math.min(t.columns-1,Math.floor((x-t.origin.x)/t.spacing.x));
+    const r = Math.min(t.rows-1,Math.floor((z-t.origin.z)/t.spacing.z));
+    const at = (col,row) => {
+        const i = periodic ? col%t.columns : Math.min(col,t.columns-1);
+        const j = periodic ? row%t.rows : Math.min(row,t.rows-1);
+        const v = t.depthMap[j*t.columns+i];
+        return v === t.noDataValue ? NaN : v*t.elevationScale;
     };
-    const a = at(col, row), b = at(col + 1, row), c = at(col, row + 1), d = at(col + 1, row + 1);
-    return tx + tz <= 1 ? a * (1 - tx - tz) + b * tx + c * tz :
-        b * (1 - tz) + c * (1 - tx) + d * (tx + tz - 1);
+    const tx = (x-t.origin.x-c*t.spacing.x)/Math.min(t.spacing.x,t.width-c*t.spacing.x);
+    const tz = (z-t.origin.z-r*t.spacing.z)/Math.min(t.spacing.z,t.depth-r*t.spacing.z);
+    const a=at(c,r),b=at(c+1,r),cc=at(c,r+1),d=at(c+1,r+1);
+    return tx+tz<=1 ? a*(1-tx-tz)+b*tx+cc*tz : b*(1-tz)+cc*(1-tx)+d*(tx+tz-1);
 }
 ```
 
