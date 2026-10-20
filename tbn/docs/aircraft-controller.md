@@ -1,5 +1,7 @@
 # Assisted aircraft flight
 
+For the default player-facing controls, camera, assets and HUD, follow [air-vehicle-experience.md](air-vehicle-experience.md). This document specifies the underlying physics and protocol.
+
 Aircraft use **`assisted-flight-v1`**, announced in `protocol_info.physics.aircraftModel`. This replaces the former thrust/torque and aerodynamic lift model. The JSON action envelope remains protocol version 2; aircraft input semantics have changed. Clients must check the model identifier, discard old lift/drag feed-forward and torque compensation, and use these semantics. Other controller modes retain their existing behavior.
 
 The server handles speed, body-rate stabilization, gravity compensation and coordinated banked turning. Clients can map keys/sticks directly to controls without a stability controller. Rapier still owns integration, geometry contacts and impacts; no flight command overwrites pose or velocity.

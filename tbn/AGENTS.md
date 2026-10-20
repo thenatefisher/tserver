@@ -49,6 +49,8 @@ Body axes follow the right-hand rule (+X cross +Y = +Z). World/DTED coordinates 
 ---
 
 ### Phase 3: Build & Scaffold Client
+
+For air-vehicle requests, read [`tbn/docs/air-vehicle-experience.md`](tbn/docs/air-vehicle-experience.md) and default to its approachable assisted-flight experience: direct target-speed/rate controls, Left/Right Arrow turning left/right, conventional pull-up pitch, a smooth chase view, recognizable aircraft GLB and compact telemetry. Keep the user's chosen style and bindings. Server assistance supplies stability; do not build a redundant client flight controller for ordinary flying. Generated clients remain independent root applications.
 Generate the four mandatory client artifacts in the **repository root** before executing the game or connecting to the server:
 1. `./client.js`: Express web server and Socket.IO bridge binding to port `3000` that connects upstream to port `4000` (or discovers via UDP `4001` / HTTP ping).
 2. `./index.html`: Client presentation (visuals, input loop emitting `action` at 30Hz, actor GLB/mesh registration, sound, and HUD).
@@ -93,6 +95,7 @@ And direct them to open `http://localhost:3000` in their browser.
 | **5. Actor Geometry & GLB** | [`tbn/docs/actor-geometry-glb.md`](tbn/docs/actor-geometry-glb.md) | GLB limits (<=5k triangles), hitbox, contactPlaneZ=0 grounding, projectile hardpoints. |
 | **6. DTED Terrain Specs** | [`tbn/docs/dted-terrain.md`](tbn/docs/dted-terrain.md) | Row-major elevation grid, triangle height sampling, mesh generation. |
 | **7. User Vibe-Coding Interview** | [`tbn/docs/user-interview.md`](tbn/docs/user-interview.md) | 4 creative interview questions to ask upon `start tbn`. |
+| **Air-vehicle experience** | [`tbn/docs/air-vehicle-experience.md`](tbn/docs/air-vehicle-experience.md) | **Read for air vehicles.** Default flight controls, smooth chase rendering, assets, HUD and acceptance checks. |
 | **8. Conformance Testing** | [`tbn/docs/conformance-testing.md`](tbn/docs/conformance-testing.md) | Automated testing with `python3 tbn/test_conformance.py`. |
 
 Terrain presets and session selection: read [`tbn/docs/terrain-presets.md`](tbn/docs/terrain-presets.md). Render all presets from received DTED samples; city blocks are raised heightfield terrain, not missing GLB buildings. Neutral ground throttle now applies stronger server coasting friction; avoid local velocity overrides that fight this authoritative response.

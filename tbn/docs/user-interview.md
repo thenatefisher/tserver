@@ -21,3 +21,7 @@ Alongside the creative questions, ask the user to choose **maximum speed (`maxSp
 Write the chosen value to `actor.json` as `physicsProfile.maxSpeed` and validate it against `tbn/schemas/actor.schema.json`. More parameters and tradeoffs may be added in the future through explicit updates to the schemas and matching contracts.
 
 Write the controller to `physicsProfile.controller`. Use the capability table and suggested mappings in [physics-controls.md](physics-controls.md); do not promise flight, strafe, or jumping for a controller that does not support it.
+
+## Air-vehicle defaults
+
+For planes, gliders, jets and freely flying drones, use [air-vehicle-experience.md](air-vehicle-experience.md) as the default experience after capturing the user's preferences. Recommend assisted flight with throttle-controlled target speed, intuitive banked turns, conventional pull-up pitch and a smooth chase view. Basic flight needs no client stability-controller design interview. Preserve preferences already supplied, and distinguish free flight from explicitly requested terrain-following hover behavior.

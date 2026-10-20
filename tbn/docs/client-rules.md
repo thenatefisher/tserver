@@ -35,3 +35,7 @@ Before executing the client or connecting to the server, generate both `actor.gl
 ## Protocol v2 client behavior
 
 Use [physics-controls.md](physics-controls.md) before implementing input or rendering. Send complete normalized held-state frames with monotonic sequences, refresh neutral input at 30 Hz, clear controls on blur, check `protocol_info`, show rejection reasons, and register the selected controller on reconnect. The server owns terrain attitude, gravity, jump eligibility and bounce. Client agents must not alter framework files to bypass validation.
+
+## Air-vehicle experience
+
+When building an air vehicle, follow [air-vehicle-experience.md](air-vehicle-experience.md) for the default control feel, camera interpolation, aircraft assets and compact HUD. Check the advertised assisted-flight model and use server stability assistance. The Flight Lab is a reference experience; generated clients must still provide the four root artifacts and their own relay/browser implementation.
