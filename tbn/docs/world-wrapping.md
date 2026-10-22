@@ -31,7 +31,7 @@ Coordinates within each tile remain `origin + index*spacing`. The last cell can 
 4. Raycast aiming against the repeated terrain meshes. A ground reticle, rocket trail, explosion, shadow and target indicator must use the same local periodic images as the aircraft and camera. Keep old smoke continuous across a crossing rather than drawing a kilometre-long segment.
 5. Preserve canonical authoritative state separately for HUD/networking. No client should send rewritten world positions or perform authoritative physics wrapping itself. Any optional prediction must reconcile with wrapped authoritative snapshots.
 
-Flight Lab implements this in `world-wrap.mjs`, `flight-poses.mjs` and `fly.js`. These server source paths are reference locations, not runtime dependencies for generated clients. Implement the recipe in the required root client artifacts.
+Flight Lab implements this in `world-wrap.mjs`, `flight-poses.mjs` and `fly.js`. These server source paths are reference locations, not runtime dependencies for generated clients. Implement the recipe in the self-contained root index.html.
 
 ## Collision and compatibility notes
 

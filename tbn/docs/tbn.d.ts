@@ -204,3 +204,12 @@ export interface ServerActorGeometryLimits {
   hitboxSizeMeters: { x: 2; y: 2; z: 2 };
   hitboxCenter: { x: 0; y: 0; z: 0 };
 }
+
+/** Standalone browser packaging; no local relay/server runtime. */
+export interface BrowserClientPackaging {
+  entry: "./index.html";
+  serverUrl: "https://open.thisagentmd.com";
+  actorScriptId: "tbn-actor";
+  requiresNodeJs: false;
+  requiresLocalWebServer: false;
+}

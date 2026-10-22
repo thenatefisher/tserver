@@ -294,11 +294,34 @@ test('configured admin secret rejects missing/incorrect credentials while player
     t.after(() => server.close()); await server.start();
     const url = `http://127.0.0.1:${server.http.address().port}`;
     for (const adminToken of ['', 'incorrect']) {
-        const socket = io(url, {autoConnect:false,reconnection:false,transports:['websocket'],auth:{role:'admin',adminToken}});
+        const socket = io(url, {autoConnect:false,reconnection:false,transports:['websocket'],auth:{role:'admin',adminToken},extraHeaders:{Origin:'null'}});
         t.after(()=>socket.close()); const rejected=event(socket,'session_rejected'); socket.connect();
         assert.equal((await rejected).reason,'Invalid admin token'); socket.close();
     }
     const admin = await connect(t,url,{role:'admin',adminToken:'test-admin-secret'});
     const player = await connect(t,url);
     assert.ok(admin.connected && player.connected);
+});
+
+test('local-file origins can fetch hosted scripts and use polling/WebSockets without cookies', async t => {
+    const server = createGameServer({port:0,host:'127.0.0.1',discovery:false,logger,adminToken:'private-admin'});
+    t.after(()=>server.close()); await server.start();
+    const url=`http://127.0.0.1:${server.http.address().port}`;
+    for(const asset of ['/tbn.js','/socket.io/socket.io.js']) {
+        const response=await fetch(url+asset,{headers:{Origin:'null'}});
+        assert.equal(response.status,200);assert.equal(response.headers.get('access-control-allow-origin'),'null');
+        assert.ok(!response.headers.has('access-control-allow-credentials'));
+        assert.match(response.headers.get('content-type'),/javascript/);const script=await response.text();assert.ok(script.length>1000);
+        if(asset==='/tbn.js'){assert.ok(script.includes('global.TBN'));assert.ok(script.includes('https://open.thisagentmd.com'));}
+    }
+    const preflight=await fetch(url+'/socket.io/?EIO=4&transport=polling',{method:'OPTIONS',headers:{Origin:'null','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type'}});
+    assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-origin'),'null');
+    for(const transports of [['polling'],['websocket'],['polling','websocket']]) {
+        const socket=await connect(t,url,{}, {transports,extraHeaders:{Origin:'null'}});
+        const accepted=event(socket,'registration_accepted');socket.emit('register_actor',meshFixture.registration());await accepted;
+        assert.ok(socket.connected);socket.close();
+    }
+    const denied=await fetch(url+'/socket.io/?EIO=4&transport=polling',{headers:{Origin:'https://untrusted.invalid'}});
+    assert.equal(denied.status,403);
+    assert.equal((await fetch(url+'/tbn.js',{headers:{Origin:'https://untrusted.invalid'}})).status,403);
 });

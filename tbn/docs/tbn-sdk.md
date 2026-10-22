@@ -1,13 +1,14 @@
 # Client integration recipe (protocol v2)
 
-Socket.IO is the supported transport. There is no bundled global `TbnSDK` implementation; older examples using `TbnSDK.connect()` were illustrative. Client agents should implement their own adapter using the events below. Read [physics-controls.md](physics-controls.md) and validate generated payloads against the shared schemas.
+Socket.IO is the supported transport. The hosted `/tbn.js` exposes `window.TBN.connect(options)` and bundles Socket.IO. Older `TbnSDK.connect()` examples are not this API. The returned object is a standard Socket.IO socket; use the events below. Read [physics-controls.md](physics-controls.md) and validate generated payloads against the shared schemas.
 
 ## Connect, register, and check compatibility
 
-Load Socket.IO from the local client server and the prepared registration package from your root client application. Register after every upstream connection, including reconnects. If writing a local relay, forward upstream `init`, `protocol_info`, registration/session results, state, map, manifests, geometry and rejection events to the browser. `init` is the upstream player ID, not the browser-local socket ID.
+Load `<script src="https://open.thisagentmd.com/tbn.js" crossorigin="anonymous"></script>` before game code. It bundles the pinned Socket.IO browser client and exposes `TBN.connect()`; embed other dependencies at build time. Read the prepared actor from the embedded `tbn-actor` JSON script, not a neighboring file. Connect directly to `https://open.thisagentmd.com`; register after every connection, including reconnects. The server must permit local-file browser origins. `init` is the player ID from this direct connection.
 
 ```js
-const socket = io('http://localhost:3000');
+const preparedActorPackage = JSON.parse(document.getElementById('tbn-actor').textContent);
+const socket = TBN.connect(); // defaults to https://open.thisagentmd.com; no cookies
 let playerId, sequence = 0, protocolReady = false, registered = false;
 const neutral = () => ({ move: { x: 0, y: 0, z: 0 }, rotate: { x: 0, y: 0, z: 0 }, brake: 0, jump: false });
 let held = neutral();
@@ -24,10 +25,8 @@ socket.on('state', state => {
   const own = state.actors.find(actor => actor.id === playerId);
   if (own) sequence = Math.max(sequence, own.lastInputSequence + 1);
 });
-socket.on('server_status', status => {
-  if (!status.connected) { registered = false; held = neutral(); }
-  else socket.emit('register_actor', preparedActorPackage);
-});
+socket.on('connect', () => { registered = false; held = neutral(); socket.emit('register_actor', preparedActorPackage); });
+socket.on('connect_error', error => showError(error.message));
 socket.on('disconnect', () => { protocolReady = false; registered = false; held = neutral(); });
 setInterval(() => {
   if (socket.connected && protocolReady && registered) {
@@ -40,9 +39,7 @@ window.addEventListener('blur', () => {
 });
 ```
 
-This is a recipe: implement `showError`, load `preparedActorPackage` from the build-time actor JSON, and map user input to `held` according to the selected controller. Also clear held state on hidden-page and pointer-lock loss. A generated relay must emit `server_status` on initial browser attachment and upstream reconnect. With a direct upstream connection, use `connect` to submit registration instead of `server_status`. Do not submit the package through both a relay's automatic registration and browser reconnect logic; pick one owner.
-
-If reusing the framework relay in a context where imports are allowed, it can own registration via `options.actorRegistration`; client-generation placement rules still prohibit importing `tbn/client-node.js` from the required root entry point. Implement the documented bridge in `client.js` for generated clients.
+The hosted adapter handles the connection; implement the game event handlers above in index.html. `TBN.connect({actor: preparedActorPackage})` can alternatively own reconnect registration; omit your manual connect registration handler when using that option. Implement showError and map controls to held state. Clear controls on hidden-page and pointer-lock loss. Do not create a local relay or load actor.json at runtime.
 
 ## State and assets
 
@@ -55,7 +52,7 @@ socket.on('mesh_manifest_removed', id => removeActor(id));
 socket.on('state', state => bufferSnapshotForInterpolation(state));
 ```
 
-Request meshes from initial manifest entries as well as new entry events. Cache world/geometry separately from moving state. State includes every actor (including this player), position/root velocity, body Euler XYZ attitude, body angular rates, grounded status and `lastInputSequence`, plus projectiles and transient hit events. Apply the body-to-world transform and quaternion interpolation from [physics-controls.md](physics-controls.md). Deduplicate hit effects by event ID. Fire inputs/projectile creation are not currently implemented.
+Request meshes from initial manifest entries as well as new entry events. Cache world/geometry separately from moving state. State includes every actor (including this player), position/root velocity, body Euler XYZ attitude, body angular rates, grounded status and `lastInputSequence`, plus projectiles and transient hit events. Apply the body-to-world transform and quaternion interpolation from [physics-controls.md](physics-controls.md). Deduplicate hit effects by event ID. Optional fire inputs and authoritative rockets/explosions follow [rockets.md](rockets.md).
 
 ## Sessions and delivery receipts
 
@@ -63,7 +60,7 @@ Use `request_sessions` → `sessions_list`; send `join_session` with a session I
 
 Optional delivery tracking uses `data_version` envelopes after payload events. Cache the payload before acknowledging `{sessionId, resource, version}` with `data_ack`. `lastInputSequence` is a separate physics acknowledgment, not a data-cache receipt. See [multiplayer-server.md](multiplayer-server.md).
 
-One upstream relay connection represents one player: give one active browser tab control ownership. Multiple independent tabs sending sequences for that same actor will conflict. A newly attached view should initialize from cached state acknowledgment or explicitly re-register before taking control; passive spectator views should not send actions.
+Each open HTML instance has its own direct server connection and input sequence. Register on that connection and use its init ID to identify the player.
 
 Handle every `map_data` as a replacement, including admin flatten updates. Dispose the old rendered terrain and rebuild from the new grid. On `terrain_flattened`, clear pose interpolation buffers without resetting input sequences.
 

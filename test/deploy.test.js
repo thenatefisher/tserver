@@ -25,13 +25,17 @@ if(args[0]==='run'&&args[1]==='deploy'){
    validToken:/^[0-9a-f]{64}$/.test(token),
    leakedInArguments:args.some(arg=>arg.includes(token)),
    usesUpdate:!!flags['--update-env-vars'],
-   project:args[args.indexOf('--project')+1]
+   project:args[args.indexOf('--project')+1],
+   publicUrl:flags['--update-env-vars'].PUBLIC_GAME_URL,
+   publicAccess:args.includes('--allow-unauthenticated'),
+   maxInstances:args[args.indexOf('--max-instances')+1],
+   timeout:args[args.indexOf('--timeout')+1]
  }));
  process.exit(Number(process.env.DEPLOY_TEST_EXIT||0));
 }
 if(args[0]==='run'&&args[1]==='services')console.log('https://example.invalid');
 `,{mode:0o755});
-    return {directory,audit,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,DEPLOY_TEST_AUDIT:audit,PROJECT_ID:'test-project'}};
+    return {directory,audit,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,DEPLOY_TEST_AUDIT:audit,PROJECT_ID:'test-project',PUBLIC_GAME_URL:'https://open.thisagentmd.com'}};
 }
 
 test('deployment creates an owner-only ignored admin secret and passes it through a flags file', t => {
@@ -42,7 +46,7 @@ test('deployment creates an owner-only ignored admin secret and passes it throug
     assert.ok(/^[0-9a-f]{64}$/.test(secret)); assert.equal(fs.statSync(secretFile).mode&0o777,0o600);
     assert.ok(!result.stdout.includes(secret) && !result.stderr.includes(secret));
     const audit=JSON.parse(fs.readFileSync(f.audit,'utf8'));
-    assert.deepEqual(audit,{secureMode:true,validToken:true,leakedInArguments:false,usesUpdate:true,project:'test-project'});
+    assert.deepEqual(audit,{secureMode:true,validToken:true,leakedInArguments:false,usesUpdate:true,project:'test-project',publicUrl:'https://open.thisagentmd.com',publicAccess:true,maxInstances:'1',timeout:'3600'});
     assert.deepEqual(fs.readdirSync(f.directory).filter(name=>name.startsWith('.admin-')),['.admin-secret.tmp']);
     for(const name of ['.gitignore','.dockerignore','.gcloudignore']){
         const text=fs.readFileSync(path.join(f.directory,name),'utf8');

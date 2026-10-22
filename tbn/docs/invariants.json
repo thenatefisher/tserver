@@ -5,14 +5,15 @@
   "network": {
     "serverPort": 4000,
     "udpDiscoveryPort": 4001,
-    "localClientPort": 3000,
     "udpProbeMessage": "TBN_DISCOVER",
     "udpBeaconType": "TBN_SERVER_BEACON",
     "httpPingEndpoint": "/ping",
     "simulationFrequencyHz": 30,
     "simulationTimestepSeconds": 0.03333333333,
     "stateBroadcastFrequencyHz": 15,
-    "stateBroadcastTiming": "approximate"
+    "stateBroadcastTiming": "approximate",
+    "browserServerUrl": "https://open.thisagentmd.com",
+    "browserScriptUrl": "https://open.thisagentmd.com/tbn.js"
   },
   "coordinates": {
     "bodyFrame": {
@@ -158,7 +159,9 @@
       "defaultActorWhenUndescribed": "simple stick man",
       "embeddedGlbField": "mesh.glb",
       "embeddedGlbEncoding": "base64",
-      "embeddedGlbMustMatchFileBytes": true
+      "embeddedGlbMustMatchFileBytes": true,
+      "embeddedHtmlPath": "./index.html",
+      "embeddedActorScriptId": "tbn-actor"
     },
     "propertySelection": {
       "at": "buildTime",
@@ -246,5 +249,16 @@
     "explosionSeconds": 1.2,
     "rocketActorCollisions": false,
     "explosionDamage": false
+  },
+  "clientPackaging": {
+    "entry": "./index.html",
+    "format": "selfContainedHtml",
+    "launch": "file://",
+    "requiresNodeJs": false,
+    "requiresLocalWebServer": false,
+    "dependencies": "hosted tbn.js; inline game code and actor assets",
+    "actorScriptId": "tbn-actor",
+    "actorFiles": "authoringArtifactsOnly",
+    "transport": "direct Socket.IO"
   }
 }

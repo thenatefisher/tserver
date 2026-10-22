@@ -9,14 +9,18 @@ const { invariants } = require('../contracts');
 const express = require('express');
 const { createServer } = require('node:http');
 const path = require('node:path');
+const fs = require('node:fs');
+const { browserAccess } = require('./browser-access');
 const { Server } = require('socket.io');
 
 /** Build the app/transports and routes; returns unbound servers without starting timers. */
-function createHttpServer({ sessions, logger, port = invariants.network.serverPort, root = path.resolve(__dirname, '../..') }) {
+function createHttpServer({ sessions, logger, port = invariants.network.serverPort, root = path.resolve(__dirname, '../..'), publicGameUrl = invariants.network.browserServerUrl, allowedOrigins = [] }) {
     const app = express();
     const http = createServer(app);
+    const access = browserAccess(publicGameUrl, allowedOrigins);
     // Allow the largest validated GLB, including base64 expansion and metadata.
-    const io = new Server(http, { maxHttpBufferSize: Math.ceil(invariants.geometryLimits.maxGlbBytes / 3) * 4 + 1024 * 1024 });
+    const io = new Server(http, { cors: access.cors, allowRequest: access.allowRequest, maxHttpBufferSize: Math.ceil(invariants.geometryLimits.maxGlbBytes / 3) * 4 + 1024 * 1024 });
+    app.use(access.assets);
     app.use((req, res, next) => {
         const started = process.hrtime.bigint();
         logger.debug('http.request', { method: req.method, path: req.path, address: req.socket.remoteAddress });
@@ -27,6 +31,13 @@ function createHttpServer({ sessions, logger, port = invariants.network.serverPo
     const status = () => ({ gameServer: true, port: http.address()?.port || port, serverName: 'Tank-Battle-Host', sessions: sessions.list() });
     app.get(invariants.network.httpPingEndpoint, (req, res) => res.json(status()));
     app.get('/sessions', (req, res) => res.json(sessions.list()));
+    // Bundle the pinned Socket.IO client into one classic script that file:// pages can load.
+    const ioDirectory = path.dirname(require.resolve('socket.io-client/package.json'));
+    const clientBundle = fs.readFileSync(path.join(ioDirectory, 'dist/socket.io.min.js'), 'utf8').replace(/\/\/# sourceMappingURL=.*$/m, '');
+    const adapter = fs.readFileSync(path.join(__dirname, 'public/tbn-client.js'), 'utf8');
+    app.get('/tbn.js', (req, res) => {
+        res.set('Cache-Control', 'no-cache').type('application/javascript').send(clientBundle + '\n;window.__TBN_SERVER_URL__=' + JSON.stringify(publicGameUrl) + ';\n' + adapter);
+    });
     // The landing page is an agent-readable Markdown document, never the admin dashboard.
     app.get('/', (req, res) => res.type('text/markdown').sendFile(path.join(__dirname, 'public/agent.md')));
     app.get('/admin.html', (req, res) => res.redirect(302, '/admin'));

@@ -38,7 +38,7 @@ Once the user replies with their aesthetic and vehicle preferences, review and s
 Key Non-Negotiables:
 The server enforces mesh volume of at least 1 m³ and a fixed 2 m cube hitbox centered at the actor origin (X/Y/Z [-1, 1]). Do not expose either as a user-selectable property or add client-supplied hitbox/volume fields. Build the GLB to satisfy these server rules.
 
-1. **Network Ports**: Central Host is `http://<host>:4000` (UDP beacon `4001`). Local relay binds `http://localhost:3000`.
+1. **Connection**: Open the generated `index.html` directly in a browser (`file://`). Its JavaScript connects directly to `https://open.thisagentmd.com` using Socket.IO. No Node.js client, local web server, port 3000, or LAN discovery is required.
 2. **Coordinate Conventions**: Body frame is **`+X` = forward**, **`+Y` = left**, **`+Z` = up** (NOT Three.js `-Z`!). Author geometry with `contactPlaneZ = 0.0`; the server subsequently determines world terrain contact and attitude.
 3. **Geometry Budgets**: Hitbox `2m x 2m x 2m`. Visual size at most `3m x 3m x 3m` in a `1km x 1km x 1km` world. Only GLB version 2 is supported. Maximum decoded GLB size is `16 * 1024 * 1024` bytes (16 MiB), with at most 5,000 triangles.
 4. **DTED Terrain**: Configurable world-X/Z row-major grid defined in `tbn/schemas/world.schema.json`. Integer heights use 0.1 m units; multiply by `elevationScale = 0.1`. At 0.25 m spacing, a 1 km extent has 4000 posts per axis (far boundary excluded). Use transmitted dimensions and spacing, never hardcode resolution.
@@ -51,16 +51,15 @@ Body axes follow the right-hand rule (+X cross +Y = +Z). World/DTED coordinates 
 ### Phase 3: Build & Scaffold Client
 
 For air-vehicle requests, read [`tbn/docs/air-vehicle-experience.md`](tbn/docs/air-vehicle-experience.md) and default to its approachable assisted-flight experience: direct target-speed/rate controls, Left/Right Arrow turning left/right, conventional pull-up pitch, a smooth chase view, recognizable aircraft GLB and compact telemetry. Keep the user's chosen style and bindings. Server assistance supplies stability; do not build a redundant client flight controller for ordinary flying. Generated clients remain independent root applications.
-Generate the four mandatory client artifacts in the **repository root** before executing the game or connecting to the server:
-1. `./client.js`: Express web server and Socket.IO bridge binding to port `3000` that connects upstream to port `4000` (or discovers via UDP `4001` / HTTP ping).
-2. `./index.html`: Client presentation (visuals, input loop emitting `action` at 30Hz, actor GLB/mesh registration, sound, and HUD).
-3. `./actor.glb`: A version 2 GLB representing the user's described actor. If the user provides no actor description, generate a simple stick man. Obey the geometry, grounding, body-frame, byte, and triangle invariants.
-4. `./actor.json`: The complete registration package following `tbn/schemas/actor.schema.json` and its referenced `tbn/schemas/mesh.schema.json`. Include base64 of the exact bytes of `actor.glb` in `mesh.glb`, along with name, client type, attributes, and mesh metadata. Include every weapon hardpoint in `mesh.metadata.projectileOrigins` using the body coordinate frame; use an empty array for an unarmed actor. Keep the files synchronized and validate both at build time. The client loads this prepared package and sends it on each server connection; do not defer asset generation until runtime.
+Generate the three mandatory client artifacts in the **repository root** before executing the game or connecting to the server:
+1. `./index.html`: One self-contained playable HTML file. Inline all JavaScript (except the approved hosted tbn.js; embed other rendering dependencies), CSS, assets, and the complete actor registration package in `<script id="tbn-actor" type="application/json">`. Escape `<` as `\u003c` when serializing JSON into HTML. Load the approved classic script https://open.thisagentmd.com/tbn.js; otherwise no runtime imports, external dependencies or fetches of neighboring files. Parse embedded actor JSON and GLB bytes in memory. Connect directly to `https://open.thisagentmd.com`.
+2. `./actor.glb`: A version 2 GLB representing the user's described actor. If the user provides no actor description, generate a simple stick man. Obey the geometry, grounding, body-frame, byte, and triangle invariants.
+3. `./actor.json`: The complete registration package following `tbn/schemas/actor.schema.json` and its referenced `tbn/schemas/mesh.schema.json`. Include base64 of the exact bytes of `actor.glb` in `mesh.glb`, along with name, client type, attributes, and mesh metadata. Include every weapon hardpoint in `mesh.metadata.projectileOrigins` using the body coordinate frame; use an empty array for an unarmed actor. Keep the files synchronized and validate both at build time. The client embeds this prepared package in `index.html` at build time and sends it on each server connection; do not defer asset generation until runtime.
 
 **Strict Placement Rules**:
-- Client code MUST reside in root (`./client.js` and `./index.html`).
+- The playable entry point MUST be root `./index.html`. Do not generate `client.js`, a Node.js relay, package installation instructions, or a local HTTP server.
 - Never place client code in `tbn/` or create alternate entry points (`app.js`, `server.js`, `frontend/index.html`).
-- Never import or modify `tbn/client-node.js`.
+- Never import or modify legacy Node helpers `tbn/client-node.js` or `tbn/listen.js` for generated games.
 
 ---
 
@@ -74,11 +73,7 @@ If any violations are reported, parse the semantic feedback and automatically re
 ---
 
 ### Phase 5: User Handoff
-Present the user with clear instructions to launch:
-```bash
-node client.js
-```
-And direct them to open `http://localhost:3000` in their browser.
+Tell the user to open `index.html` directly in their browser. The TBN game server must already be running at `https://open.thisagentmd.com`; do not require any local client server or Node.js installation. Test from `file://` and show connection/registration errors visibly. The game server must allow local-file browser connections (including the null Origin used by relevant transports).
 
 ---
 
@@ -88,9 +83,9 @@ And direct them to open `http://localhost:3000` in their browser.
 |---|---|---|
 | **Physics & Controls v2** | [`tbn/docs/physics-controls.md`](tbn/docs/physics-controls.md) | **Mandatory.** Rapier controllers, input lifecycle, slope attitude, jumps, bounce and rendering. |
 | **0. System Invariants** | [`tbn/docs/invariants.md`](tbn/docs/invariants.md) | **Mandatory.** Ports, body frame coordinates (+X forward), limits, DTED math, and schemas. |
-| **1. Game Construction Rules** | [`tbn/docs/client-rules.md`](tbn/docs/client-rules.md) | Root placement only, strict immutability of `tbn/`, forbidden entry points, `node client.js`. |
+| **1. Game Construction Rules** | [`tbn/docs/client-rules.md`](tbn/docs/client-rules.md) | Root placement only, strict immutability of `tbn/`, forbidden entry points, local `index.html`. |
 | **2. Multiplayer Server & Protocol** | [`tbn/docs/multiplayer-server.md`](tbn/docs/multiplayer-server.md) | Socket.IO server, 30Hz loop, event lifecycles, and combat. |
-| **3. System Architecture** | [`tbn/docs/architecture.md`](tbn/docs/architecture.md) | 3-tier architecture: Authoritative Host, Local Node Relay, Browser Presentation. |
+| **3. System Architecture** | [`tbn/docs/architecture.md`](tbn/docs/architecture.md) | Direct browser-to-game-server architecture. |
 | **4. TBN SDK Integration** | [`tbn/docs/tbn-sdk.md`](tbn/docs/tbn-sdk.md) | `TbnSDK.connect()`, map receipt, actor registration, state updates, hit events. |
 | **5. Actor Geometry & GLB** | [`tbn/docs/actor-geometry-glb.md`](tbn/docs/actor-geometry-glb.md) | GLB limits (<=5k triangles), hitbox, contactPlaneZ=0 grounding, projectile hardpoints. |
 | **6. DTED Terrain Specs** | [`tbn/docs/dted-terrain.md`](tbn/docs/dted-terrain.md) | Row-major elevation grid, triangle height sampling, mesh generation. |

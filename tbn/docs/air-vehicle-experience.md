@@ -2,7 +2,7 @@
 
 When a user asks for a plane, glider, jet or other freely flying air vehicle, default to an approachable **assisted-flight** experience like the server's Flight Lab (`/fly`). Preserve the user's requested visual style, vehicle design and control preferences. Use this as a starting experience, not a requirement to reproduce its dashboard or its exact aircraft.
 
-Read [aircraft-controller.md](aircraft-controller.md) for definitive aircraft behavior, [physics-controls.md](physics-controls.md) for the protocol, and [client-rules.md](client-rules.md) for required root artifacts. The action/actor/world/state schemas remain the interface contract. The built-in page illustrates the experience; generated clients must run independently through their own `client.js` and `index.html`, not import server files or depend on `/fly` or its assets being hosted by the relay.
+Read [aircraft-controller.md](aircraft-controller.md) for definitive aircraft behavior, [physics-controls.md](physics-controls.md) for the protocol, and [client-rules.md](client-rules.md) for required root artifacts. The action/actor/world/state schemas remain the interface contract. The built-in page illustrates the experience; generated clients must run independently through their own self-contained `index.html`, not import server files or depend on `/fly` or its assets being loaded at runtime.
 
 ## Choose the matching server controller
 
@@ -56,7 +56,7 @@ Keep a compact HUD with target speed/throttle, actual speed, altitude, vertical 
 - Raising speed during level airborne flight does not create runaway lift. Pitch changes the flight path; roll alone does not introduce unintended nose elevation changes.
 - Releasing rotation stabilizes rates/levels wings; stop/brake slows smoothly. Takeoff and terrain contact work with the actual generated GLB.
 - Mesh and chase camera move smoothly between snapshots. Terrain replacement, reconnect, input timeout and focus loss do not leave stuck controls or stale interpolation.
-- Registration, complete frames, GLB and JSON pass the shared validation and existing conformance workflow. The client starts through `node client.js` and remains independent of server implementation files.
+- Registration, complete frames, GLB and JSON pass the shared validation and existing conformance workflow. The client opens directly from disk as `index.html` and remains independent of server implementation files.
 
 Use the Flight Lab's control feel as the default. Reserve aircraft tuning panels and client autopilot construction for users who request them; a basic flying experience should be immediately usable.
 

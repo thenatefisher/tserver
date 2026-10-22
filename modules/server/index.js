@@ -17,7 +17,7 @@ function createGameServer(options = {}) {
     const logger = options.logger || createLogger(options.debug);
     const sessions = new SessionManager();
     for (const config of options.sessions || [{ id: 'default', name: 'Tank Battle' }]) sessions.createSession(config);
-    const { app, http, io } = createHttpServer({ sessions, logger, port: options.port ?? invariants.network.serverPort });
+    const { app, http, io } = createHttpServer({ sessions, logger, port: options.port ?? invariants.network.serverPort, publicGameUrl: options.publicGameUrl, allowedOrigins: options.allowedOrigins });
     const sockets = new ClientSockets({ io, sessions, logger, adminToken: options.adminToken });
     const discovery = options.discovery === false ? null : new SessionDiscovery({
         sessions, logger, httpPort: () => http.address()?.port,

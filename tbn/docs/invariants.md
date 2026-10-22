@@ -10,11 +10,12 @@ TBN gives users and their agents the scaffolding to create their own games. Ever
 
 ## 1. Network Topology & Ports
 
+Generated clients are self-contained root `index.html` files opened using `file://`. All runtime dependencies and actor registration data are embedded. Browser JavaScript connects directly via Socket.IO to `https://open.thisagentmd.com`; there is no local relay, web server, Node.js requirement or runtime dependency on sibling files. The game server must permit local-file browser connections.
+
 | Component | Protocol / Transport | Port / Endpoint | Invariant Value | Description |
 |---|---|---|---|---|
 | **Authoritative Game Host** | HTTP / Socket.IO | `4000` | `http://<host>:4000` | Central authoritative physics & combat simulation. |
 | **UDP Beacon Discovery** | UDP Broadcast | `4001` | `255.255.255.255:4001` | Probe string: `"TBN_DISCOVER"`. Response: `{"type":"TBN_SERVER_BEACON","port":4000}`. |
-| **Local Client Relay** | HTTP / Express + Socket.IO | `3000` | `http://localhost:3000` | Local relay launched via `node client.js`. Serves `./index.html`. |
 | **Host Ping Probe** | HTTP GET | `4000` | `GET http://<host>:4000/ping` | Subnet fallback probe. Returns `{"gameServer":true,"port":4000}`. |
 
 ---
