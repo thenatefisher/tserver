@@ -1,0 +1,6 @@
+.gcloudignore
+.git
+.gitignore
+#!include:.gitignore
+.admin-secret.tmp*
+.admin-deploy-flags.tmp*

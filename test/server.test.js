@@ -39,6 +39,16 @@ test('HTTP, UDP discovery, sessions, legacy events, and data receipts work end t
     assert.equal((await (await fetch(url + '/sessions')).json()).length, 2);
     for (const asset of ['/admin', '/admin.js', '/vendor/three/build/three.module.js', '/fly', '/fly.js', '/flight-actor.json']) { const response = await fetch(url + asset); assert.equal(response.status, 200); await response.arrayBuffer(); }
     assert.equal((await fetch(url + '/package.json')).status, 404, 'only public assets are exposed');
+    const landing = await fetch(url + '/');
+    assert.match(landing.headers.get('content-type'), /^text\/markdown/);
+    const instructions = await landing.text();
+    assert.match(instructions, /^# Build a TBN game/);
+    assert.ok(instructions.includes('https://open.thisagentmd.com/mcp'));
+    assert.ok(!instructions.includes('<html') && !instructions.includes('admin-token'));
+    const adminAlias = await fetch(url + '/admin.html', { redirect: 'manual' });
+    assert.equal(adminAlias.status, 302); assert.equal(adminAlias.headers.get('location'), '/admin');
+    assert.equal((await fetch(url + '/.admin-secret.tmp')).status, 404);
+
     const udp = dgram.createSocket('udp4'); t.after(() => udp.close());
     const beacon = once(udp, 'message');
     udp.send('TBN_DISCOVER_PING', server.discovery.socket.address().port, '127.0.0.1');
@@ -276,4 +286,19 @@ test('Flight Lab asset registers through the player contract and advertises assi
     const armed = await shot;
     assert.equal(armed.projectiles.find(p => p.ownerId === player.id).hardpointId, 'left');
     assert.ok(Array.isArray(armed.explosions));
+});
+
+
+test('configured admin secret rejects missing/incorrect credentials while players remain public', async t => {
+    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger, adminToken: 'test-admin-secret' });
+    t.after(() => server.close()); await server.start();
+    const url = `http://127.0.0.1:${server.http.address().port}`;
+    for (const adminToken of ['', 'incorrect']) {
+        const socket = io(url, {autoConnect:false,reconnection:false,transports:['websocket'],auth:{role:'admin',adminToken}});
+        t.after(()=>socket.close()); const rejected=event(socket,'session_rejected'); socket.connect();
+        assert.equal((await rejected).reason,'Invalid admin token'); socket.close();
+    }
+    const admin = await connect(t,url,{role:'admin',adminToken:'test-admin-secret'});
+    const player = await connect(t,url);
+    assert.ok(admin.connected && player.connected);
 });

@@ -27,16 +27,13 @@ function createHttpServer({ sessions, logger, port = invariants.network.serverPo
     const status = () => ({ gameServer: true, port: http.address()?.port || port, serverName: 'Tank-Battle-Host', sessions: sessions.list() });
     app.get(invariants.network.httpPingEndpoint, (req, res) => res.json(status()));
     app.get('/sessions', (req, res) => res.json(sessions.list()));
+    // The landing page is an agent-readable Markdown document, never the admin dashboard.
+    app.get('/', (req, res) => res.type('text/markdown').sendFile(path.join(__dirname, 'public/agent.md')));
+    app.get('/admin.html', (req, res) => res.redirect(302, '/admin'));
     app.use('/vendor/three', express.static(path.join(root, 'node_modules/three')));
     app.use(express.static(path.join(__dirname, 'public')));
     app.get('/fly', (req, res) => res.sendFile(path.join(__dirname, 'public/fly.html')));
-    app.get(['/', '/admin'], (req, res, next) => {
-        res.sendFile(path.join(__dirname, 'public/admin.html'), error => {
-            if (!error) return;
-            if (error.code === 'ENOENT') return res.json(status());
-            next(error);
-        });
-    });
+    app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public/admin.html')));
     io.engine.on('connection_error', error => logger.debug('socket.connection_error', { code: error.code, message: error.message }));
     return { app, http, io };
 }
