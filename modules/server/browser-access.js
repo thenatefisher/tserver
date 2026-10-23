@@ -8,7 +8,7 @@
 /** Allow opaque local-file origins, native clients, hosted game pages and local development origins. */
 function browserAccess(publicUrl, additional = []) {
     const publicOrigin = new URL(publicUrl).origin;
-    const allowed = new Set([publicOrigin, 'https://open.thisagentmd.com', 'http://open.thisagentmd.com', ...additional]);
+    const allowed = new Set([publicOrigin, 'https://game.thisagentmd.com', 'https://open.thisagentmd.com', 'http://open.thisagentmd.com', ...additional]);
     /** Test an origin without treating an allowed browser origin as an authenticated admin. */
     const permits = origin => {
         if (!origin || origin === 'null') return true;

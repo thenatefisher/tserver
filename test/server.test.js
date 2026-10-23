@@ -301,6 +301,8 @@ test('configured admin secret rejects missing/incorrect credentials while player
     const admin = await connect(t,url,{role:'admin',adminToken:'test-admin-secret'});
     const player = await connect(t,url);
     assert.ok(admin.connected && player.connected);
+    const hostedAdmin = await connect(t,url,{role:'admin',adminToken:'test-admin-secret'}, {extraHeaders:{Origin:'https://game.thisagentmd.com'}});
+    assert.ok(hostedAdmin.connected);
 });
 
 test('local-file origins can fetch hosted scripts and use polling/WebSockets without cookies', async t => {

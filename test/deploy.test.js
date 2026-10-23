@@ -54,6 +54,14 @@ test('deployment creates an owner-only ignored admin secret and passes it throug
     }
 });
 
+test('deployment defaults to the hosted game domain', t => {
+    const f=fixture(t);
+    delete f.env.PUBLIC_GAME_URL;
+    const result=spawnSync('bash',[path.join(f.directory,'deploy.sh')],{env:f.env,encoding:'utf8'});
+    assert.equal(result.status,0,result.stderr);
+    assert.equal(JSON.parse(fs.readFileSync(f.audit,'utf8')).publicUrl,'https://game.thisagentmd.com');
+});
+
 test('failed deployment preserves the current admin secret and removes pending credential files', t => {
     const f=fixture(t), secretFile=path.join(f.directory,'.admin-secret.tmp');
     fs.writeFileSync(secretFile,'previous-secret\n',{mode:0o600});

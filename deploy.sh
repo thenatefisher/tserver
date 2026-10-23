@@ -11,7 +11,7 @@ cd "$deploy_root"
 PROJECT_ID="${PROJECT_ID:-emerald-ivy-509712-r5}"
 REGION="${REGION:-us-central1}"
 SERVICE_NAME="${SERVICE_NAME:-tserver}"
-PUBLIC_GAME_URL="${PUBLIC_GAME_URL:-https://open.thisagentmd.com}"
+PUBLIC_GAME_URL="${PUBLIC_GAME_URL:-https://game.thisagentmd.com}"
 # Only an origin is accepted; validation also makes flags-file serialization unambiguous.
 if [[ ! "$PUBLIC_GAME_URL" =~ ^https?://[a-zA-Z0-9.:-]+$ ]]; then
   printf '%s\n' 'PUBLIC_GAME_URL must be an HTTP(S) origin without a path.' >&2

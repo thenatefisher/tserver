@@ -89,8 +89,9 @@ function renderClients() {
 }
 $('admin-auth').addEventListener('submit', event => {
     event.preventDefault();
-    sessionStorage.setItem('tbnAdminToken', $('admin-token').value);
-    socket.auth.adminToken = $('admin-token').value;
+    const token = $('admin-token').value.trim();
+    sessionStorage.setItem('tbnAdminToken', token);
+    socket.auth.adminToken = token;
     socket.disconnect().connect();
 });
 $('session-select').addEventListener('change', () => {
