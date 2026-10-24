@@ -6,7 +6,8 @@
   "scripts": {
     "host": "node game-server.js",
     "test": "node --test test/*.test.js",
-    "start": "node game-server.js"
+    "start": "node game-server.js",
+    "build:admin": "tailwindcss -i modules/server/admin.input.css -o modules/server/public/admin.css --minify"
   },
   "keywords": [],
   "type": "commonjs",
@@ -17,5 +18,9 @@
     "socket.io": "^4.8.4",
     "socket.io-client": "^4.8.1",
     "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
   }
 }

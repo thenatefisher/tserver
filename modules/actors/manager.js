@@ -58,10 +58,8 @@ class ActorManager {
         const contact = terrainContact(actor, { terrain: this.terrain });
         if (Number.isFinite(contact.height)) actor.position.y = Math.max(actor.position.y, contact.height);
     }
-    /** Validate an actor package/solid atomically, update its model and publish registration/GLB versions. */
-    register(id, input) {
-        const actor = this.data.actors.get(id);
-        if (!actor) throw new Error('Player actor does not exist');
+    /** Validate a registration without changing session actors, physics or resources. */
+    prepare(input) {
         validate('actor', input);
         // Validate before mutating the actor or publishing a new version.
         const buffer = decodeGlb(input.mesh.glb);
@@ -72,6 +70,13 @@ class ActorManager {
             if (actualSize > MAX_VISUAL_SIZE[axis] || Math.abs(actualSize - metadata.visualSize[axis]) > 0.01) throw new Error('Declared visualSize does not match transformed GLB');
         }
         const body = createSolidBody(info, this.density);
+        return { buffer, info, metadata, body };
+    }
+    /** Validate an actor package/solid atomically, update its model and publish registration/GLB versions. */
+    register(id, input) {
+        const actor = this.data.actors.get(id);
+        if (!actor) throw new Error('Player actor does not exist');
+        const { buffer, info, metadata, body } = this.prepare(input);
         const next = { ...actor, projectileOrigins: structuredClone(metadata.projectileOrigins), position: { ...actor.position }, body, name: input.name,
             clientType: input.clientType, physicsProfile: { ...input.physicsProfile },
             action: normalizeAction(), lastInputSequence: -1 };

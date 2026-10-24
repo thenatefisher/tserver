@@ -1,0 +1,31 @@
+@import "tailwindcss";
+@source "./public/admin.html";
+@source "./public/admin.js";
+@source "./public/admin-sessions.js";
+@layer base {
+ [hidden] { display:none !important; }
+ button,input,select { @apply rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200; }
+ button { @apply cursor-pointer transition-colors hover:bg-slate-700 disabled:cursor-default disabled:opacity-40; }
+ input:focus-visible,select:focus-visible,button:focus-visible { @apply outline-2 outline-offset-2 outline-cyan-400; }
+ small,dt { @apply text-slate-400; } dd { @apply mt-1 font-mono text-sm text-white; }
+ h2 { @apply text-base font-semibold text-white; }
+ th,td { @apply border-b border-slate-800 px-3 py-3 text-left align-top text-xs; }
+ th { @apply font-medium text-slate-400; } table { @apply w-full; }
+ pre { @apply whitespace-pre-wrap break-all text-xs; }
+}
+@layer components {
+ .card { @apply min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-5; }
+ .toolbar { @apply mb-4 flex flex-wrap items-center justify-between gap-3; }
+ .layout { @apply grid gap-6 xl:grid-cols-2; }
+ .scroll { @apply overflow-auto; max-height:65vh; }
+ .lower { @apply mt-6; }
+ .nav-item { @apply w-full border-transparent bg-transparent text-left text-slate-400; }
+ .nav-item[aria-current="page"] { @apply border-cyan-900 bg-cyan-950 text-cyan-300; }
+ .filter-label { @apply flex flex-col gap-1 text-xs text-slate-400; }
+ .danger { @apply text-rose-400; }
+ #viewer { @apply relative my-4 h-80 overflow-hidden rounded-lg bg-slate-950; }
+ #viewer-message { @apply pointer-events-none absolute inset-0 grid place-items-center p-6 text-center text-slate-400; }
+ #viewer canvas { @apply block h-full w-full; }
+ #radar { @apply mx-auto block w-full max-w-lg rounded-lg bg-slate-950; }
+ #activity { @apply max-h-40 overflow-auto text-xs leading-6 text-slate-400; }
+}

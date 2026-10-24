@@ -8,7 +8,7 @@
 const Ajv = require('ajv');
 const path = require('node:path');
 const schemaRoot = path.resolve(__dirname, '../../tbn/schemas');
-const schemas = Object.fromEntries(['actor', 'mesh', 'actions', 'world', 'state'].map(name => [name, require(path.join(schemaRoot, `${name}.schema.json`))]));
+const schemas = Object.fromEntries(['actor', 'mesh', 'actions', 'world', 'state', 'system-messages'].map(name => [name, require(path.join(schemaRoot, `${name}.schema.json`))]));
 // Schemas own all structural/field limits. Invariants provide binary limits,
 // coordinate conventions and cadence that JSON Schema cannot express.
 const invariants = require('../../tbn/docs/invariants.json');
@@ -20,6 +20,7 @@ function validate(name, value) {
     const validator = validators[name];
     if (!validator) throw new Error(`Unknown contract: ${name}`);
     if (!validator(value)) throw new Error(`${name}: ${ajv.errorsText(validator.errors, { separator: '; ' })}`);
+    if (name === 'system-messages' && new Set(value.map(message => message.id)).size !== value.length) throw new Error('system-messages: IDs must be unique');
     return value;
 }
 const worldSize = Object.fromEntries(Object.entries(schemas.world.properties.size.properties).map(([axis, schema]) => [axis, schema.const]));

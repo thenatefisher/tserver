@@ -15,9 +15,12 @@ const { createMap, createDtedTerrain, validateMap, resetTargets } = require('../
 
 class GameSession extends EventEmitter {
     /** Generate or clone a session terrain, build its physics/data/actor owners and leave timers stopped. */
-    constructor({ id, name = id, map, terrainPreset, terrainSeed, tickRate = invariants.network.simulationFrequencyHz, environment = {}, physicsFactory = options => new PhysicsModel(undefined, undefined, options) }) {
+    constructor({ id, name = id, map, terrainPreset, terrainSeed, maxPlayers = 16, acceptingPlayers = true, gameMode = 'free-play', tickRate = invariants.network.simulationFrequencyHz, environment = {}, physicsFactory = options => new PhysicsModel(undefined, undefined, options) }) {
         super();
         if (!Number.isFinite(tickRate) || tickRate <= 0) throw new Error('Invalid tick rate');
+        if (!Number.isInteger(maxPlayers) || maxPlayers < 1) throw new Error('Invalid maxPlayers');
+        this.acceptingPlayers = acceptingPlayers;
+        this.reservedPlayers = 0; this.maxPlayers = maxPlayers; this.gameMode = gameMode;
         this.id = id; this.name = name; this.tickRate = tickRate; this.startedAt = Date.now();
         if (map && terrainPreset !== undefined) throw new Error('Choose either a custom map or terrainPreset');
         map ||= createMap({ preset: terrainPreset, seed: terrainSeed });
@@ -34,7 +37,7 @@ class GameSession extends EventEmitter {
         this.timers = [];
     }
     /** Return public identity and connection/actor counts for discovery. */
-    description() { return { id: this.id, name: this.name, actorCount: this.data.actors.size, clientCount: [...this.data.clients.values()].filter(c => !c.connection.admin).length, tickRate: this.tickRate, terrainPreset: this.data.map.terrain.preset || null }; }
+    description() { const playerCount = [...this.data.clients.values()].filter(c => !c.connection.admin).length + this.reservedPlayers; return { playerCount, reservedPlayers: this.reservedPlayers, maxPlayers: this.maxPlayers, gameMode: this.gameMode, status: this.acceptingPlayers ? 'open' : 'closed', joinable: this.acceptingPlayers && playerCount < this.maxPlayers, unavailableReason: !this.acceptingPlayers ? 'Session is closed to new players' : playerCount >= this.maxPlayers ? 'Session is full' : null, id: this.id, name: this.name, actorCount: this.data.actors.size, clientCount: [...this.data.clients.values()].filter(c => !c.connection.admin).length, tickRate: this.tickRate, terrainPreset: this.data.map.terrain.preset || null }; }
     /** Validate/publish a public state resource and drain queued transient hit events. */
     snapshot() {
         const state = this.physics.getState();

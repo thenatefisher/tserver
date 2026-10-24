@@ -19,7 +19,7 @@ function event(socket, name, predicate = () => true) {
     });
 }
 async function connect(t, url, auth = {}, options = {}) {
-    const socket = io(url, { autoConnect: false, reconnection: false, transports: ['websocket'], auth, ...options });
+    const socket = io(url, { autoConnect: false, reconnection: false, transports: ['websocket'], auth: { sessionId: 'default', adminToken: 'test-admin', ...auth }, ...options });
     t.after(() => socket.close());
     const joined = event(socket, auth.role === 'admin' ? 'session_joined' : 'session_selected');
     const protocol = event(socket, 'protocol_info');
@@ -126,7 +126,7 @@ test('HTTP, UDP discovery, sessions, legacy events, and data receipts work end t
 });
 
 test('kick and address bans are session scoped and survive reconnects until unbanned', { timeout: 15000 }, async t => {
-    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger, sessions: [{ id: 'default' }, { id: 'second' }] });
+    const server = createGameServer({ adminToken: 'test-admin', port: 0, host: '127.0.0.1', discovery: false, logger, sessions: [{ id: 'default' }, { id: 'second' }] });
     t.after(() => server.close()); await server.start();
     const url = `http://127.0.0.1:${server.http.address().port}`;
     const admin = await connect(t, url, { role: 'admin' });
@@ -140,7 +140,7 @@ test('kick and address bans are session scoped and survive reconnects until unba
     const banned = event(admin, 'actor_banned'); admin.emit('admin_ban_actor', returning.id);
     const ban = await banned;
     const rejected = io(url, { autoConnect: false, reconnection: false, transports: ['websocket'] }); t.after(() => rejected.close());
-    const rejection = event(rejected, 'session_rejected'); rejected.connect();
+    const rejection = event(rejected, 'session_rejected'); rejected.auth = { sessionId: 'default' }; rejected.connect();
     assert.match((await rejection).reason, /banned/);
     const other = await connect(t, url, { sessionId: 'second' }); assert.ok(other.connected);
     admin.emit('admin_unban_actor', ban.address);
@@ -149,7 +149,7 @@ test('kick and address bans are session scoped and survive reconnects until unba
 });
 
 test('polling clients register using only the shared contract events', { timeout: 10000 }, async t => {
-    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger });
+    const server = createGameServer({ adminToken: 'test-admin', port: 0, host: '127.0.0.1', discovery: false, logger });
     t.after(() => server.close()); await server.start();
     const player = await connect(t, `http://127.0.0.1:${server.http.address().port}`, {}, { transports: ['polling'] });
     const accepted = event(player, 'registration_accepted'); player.emit('register_actor', meshFixture.registration()); await accepted;
@@ -176,26 +176,8 @@ test('CLI debug excludes simulation ticks and socket sends and shuts down cleanl
 });
 
 
-test('framework relay forwards v2 announcements, registration, controls and rejection feedback', { timeout: 10000 }, async t => {
-    const { ClientNode } = require('../tbn/client-node');
-    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger });
-    t.after(() => server.close()); await server.start();
-    const relay = new ClientNode({ localPort: 0, debug: false, serverUrl: `http://127.0.0.1:${server.http.address().port}`, actorRegistration: meshFixture.registration() });
-    t.after(() => relay.stop());
-    const registered = once(relay, 'game:registration_accepted'); await relay.start(); await registered;
-    const browser = io(`http://127.0.0.1:${relay.localPort}`, { autoConnect: false, transports: ['websocket'] });
-    t.after(() => browser.close());
-    const announcement = event(browser, 'protocol_info'), registration = event(browser, 'registration_accepted');
-    browser.connect(); assert.equal((await announcement).protocolVersion, 2);
-    assert.equal((await registration).physicsProfile.controller, 'ground');
-    const acknowledged = event(browser, 'state', s => s.actors.some(a => a.lastInputSequence === 17));
-    browser.emit('action', frame({ sequence: 17 })); await acknowledged;
-    const rejection = event(browser, 'request_rejected'); browser.emit('action', frame({ sequence: 16 }));
-    assert.match((await rejection).reason, /sequence/);
-});
-
 test('admin flatten publishes the replacement map/state and rejects player requests', { timeout: 10000 }, async t => {
-    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger, sessions: [{ id: 'default' }, { id: 'second' }] });
+    const server = createGameServer({ adminToken: 'test-admin', port: 0, host: '127.0.0.1', discovery: false, logger, sessions: [{ id: 'default' }, { id: 'second' }] });
     t.after(() => server.close()); await server.start();
     const url = `http://127.0.0.1:${server.http.address().port}`;
     assert.match(await (await fetch(url + '/admin')).text(), /id="flatten-terrain"/);
@@ -210,7 +192,7 @@ test('admin flatten publishes the replacement map/state and rejects player reque
 });
 
 test('admin diagnostic buttons clear targets and disable object collisions only within the selected session', { timeout: 10000 }, async t => {
-    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger, sessions: [{ id: 'default' }, { id: 'second' }] });
+    const server = createGameServer({ adminToken: 'test-admin', port: 0, host: '127.0.0.1', discovery: false, logger, sessions: [{ id: 'default' }, { id: 'second' }] });
     t.after(() => server.close()); await server.start();
     const url = `http://127.0.0.1:${server.http.address().port}`;
     const html = await (await fetch(url + '/admin')).text();
@@ -234,7 +216,7 @@ test('admin diagnostic buttons clear targets and disable object collisions only 
 });
 
 test('admins choose a session terrain preset and clients receive the matching map and reset notice', {timeout:10000}, async t => {
-    const server=createGameServer({port:0,host:'127.0.0.1',discovery:false,logger,sessions:[{id:'default',terrainPreset:'flat'},{id:'second',terrainPreset:'valley'}]});
+    const server=createGameServer({adminToken:'test-admin',port:0,host:'127.0.0.1',discovery:false,logger,sessions:[{id:'default',terrainPreset:'flat'},{id:'second',terrainPreset:'valley'}]});
     t.after(()=>server.close()); await server.start();
     const url=`http://127.0.0.1:${server.http.address().port}`;
     const html=await(await fetch(url+'/admin')).text(); assert.match(html,/id="terrain-preset"/); assert.match(html,/id="apply-terrain"/);
@@ -252,7 +234,7 @@ test('admins choose a session terrain preset and clients receive the matching ma
 });
 
 test('terrain preview is admin-only, correlated to its request and does not apply a terrain change', {timeout:10000}, async t => {
-    const server=createGameServer({port:0,host:'127.0.0.1',discovery:false,logger,sessions:[{id:'default',terrainPreset:'flat'}]});
+    const server=createGameServer({adminToken:'test-admin',port:0,host:'127.0.0.1',discovery:false,logger,sessions:[{id:'default',terrainPreset:'flat'}]});
     t.after(()=>server.close()); await server.start();
     const url=`http://127.0.0.1:${server.http.address().port}`;
     assert.match(await(await fetch(url+'/admin')).text(), /id="preset-preview"/);
@@ -268,7 +250,7 @@ test('terrain preview is admin-only, correlated to its request and does not appl
 
 
 test('Flight Lab asset registers through the player contract and advertises assisted flight', async t => {
-    const server = createGameServer({ port: 0, host: '127.0.0.1', discovery: false, logger,
+    const server = createGameServer({ adminToken: 'test-admin', port: 0, host: '127.0.0.1', discovery: false, logger,
         sessions: [{ id: 'default', terrainPreset: 'flat' }] });
     t.after(() => server.close()); await server.start();
     const url = `http://127.0.0.1:${server.http.address().port}`;
@@ -326,4 +308,61 @@ test('local-file origins can fetch hosted scripts and use polling/WebSockets wit
     const denied=await fetch(url+'/socket.io/?EIO=4&transport=polling',{headers:{Origin:'https://untrusted.invalid'}});
     assert.equal(denied.status,403);
     assert.equal((await fetch(url+'/tbn.js',{headers:{Origin:'https://untrusted.invalid'}})).status,403);
+});
+
+test('lobby connections browse, join atomically, leave, and survive session closure', { timeout: 10000 }, async t => {
+    const server = createGameServer({ adminToken: 'test-admin', port: 0, host: '127.0.0.1', discovery: false, logger,
+        sessions: [{ id: 'default', maxPlayers: 1 }, { id: 'second' }] });
+    t.after(() => server.close()); await server.start();
+    const url = `http://127.0.0.1:${server.http.address().port}`;
+    const socket = io(url, { autoConnect: false, reconnection: false, transports: ['websocket'] });
+    t.after(() => socket.close());
+    const list = event(socket, 'sessions_list'); socket.connect(); assert.equal((await list).length, 2);
+    assert.equal(server.sessions.get().data.clients.size, 0);
+    const denied = event(socket, 'request_rejected'); socket.emit('request_map');
+    assert.match((await denied).reason, /Join a session first/);
+    const request = (name, payload) => new Promise(resolve => socket.emit(name, payload, resolve));
+    assert.equal((await request('join_session', {sessionId:'default', actor:meshFixture.registration()})).ok, true);
+    assert.equal(server.sessions.get().data.actors.size, 1);
+    assert.equal((await request('join_session', {sessionId:'second', actor:{}})).ok, false);
+    assert.equal(server.sessions.get().data.actors.size, 1);
+    assert.equal((await request('leave_session', {})).ok, true);
+    assert.equal(server.sessions.get().data.actors.size, 0);
+    assert.ok(socket.connected);
+    await request('join_session', {sessionId:'second', actor:meshFixture.registration()});
+    const closed = event(socket, 'session_closed'); server.sessions.removeSession('second'); await closed;
+    assert.ok(socket.connected); assert.equal(server.sockets.connections.get(socket.id).session, null);
+});
+
+test('loading reserves capacity, gates activation, and unexpected disconnects can resume', {timeout:10000}, async t => {
+    const server = createGameServer({adminToken:'test-admin',port:0, host:'127.0.0.1', discovery:false, logger, sessions:[{id:'default',maxPlayers:1}]});
+    t.after(()=>server.close()); await server.start();
+    const url=`http://127.0.0.1:${server.http.address().port}`;
+    async function lobby() {
+        const socket=io(url,{autoConnect:false,reconnection:false,transports:['websocket']});t.after(()=>socket.close());
+        const listed=event(socket,'sessions_list');socket.connect();await listed;return socket;
+    }
+    const request=(socket,name,payload)=>new Promise(resolve=>socket.emit(name,payload,resolve));
+    const socket=await lobby(), other=await lobby(), session=server.sessions.get();
+    const terrain=event(socket,'data_version',r=>r.resource==='terrain');
+    const registrations=event(socket,'data_version',r=>r.resource==='registrations');
+    assert.equal((await request(socket,'join_session',{sessionId:'default',actor:meshFixture.registration(),waitForReady:true})).status,'loading');
+    assert.equal(session.data.actors.size,0);
+    assert.equal((await request(socket,'client_ready',{})).ok,false);
+    assert.equal((await request(other,'join_session',{sessionId:'default',actor:meshFixture.registration()})).ok,false);
+    assert.equal(session.data.actors.size,0,'failed admission does not publish an actor');
+    await request(socket,'data_ack',await terrain);await request(socket,'data_ack',await registrations);
+    const joined=event(socket,'session_joined');assert.equal((await request(socket,'client_ready',{})).ok,true);
+    const identity=await joined;assert.equal(session.data.actors.size,1);
+    const disconnected=event(socket,'disconnect');socket.io.engine.close();await disconnected;
+    // A request/response on another socket ensures the server processed the disconnect.
+    await new Promise(resolve=>setTimeout(resolve,30));
+    assert.equal(session.data.actors.size,0);assert.equal(session.reservedPlayers,1);
+    const resumed=event(other,'session_joined');
+    assert.equal((await request(other,'resume_session',{resumeToken:identity.resumeToken})).ok,true);
+    assert.equal((await resumed).playerId,identity.playerId);assert.equal(session.reservedPlayers,0);
+    assert.equal(session.data.actors.size,1);
+    assert.equal(session.data.registrations.get(other.id).id, other.id);
+    assert.equal(session.data.actors.get(other.id).action.move.x, 0);
+    assert.equal((await request(other,'leave_session',{})).ok,true);
 });

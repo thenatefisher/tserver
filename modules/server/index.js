@@ -5,6 +5,7 @@
  * Side effects: start binds listeners and starts sessions; close disconnects clients and releases resources.
  * Coupling: HTTP, discovery, sockets, logging and sessions are wired here, not in the root executable.
  */
+const { SystemMessages } = require('./system-messages');
 const { invariants } = require('../contracts');
 const { SessionManager } = require('../sessions/manager');
 const { createHttpServer } = require('./http');
@@ -14,11 +15,12 @@ const { createLogger } = require('./logger');
 
 /** Create an owned server runtime; port binding occurs only when start is called. */
 function createGameServer(options = {}) {
+    const systemMessages = new SystemMessages(options);
     const logger = options.logger || createLogger(options.debug);
     const sessions = new SessionManager();
     for (const config of options.sessions || [{ id: 'default', name: 'Tank Battle' }]) sessions.createSession(config);
     const { app, http, io } = createHttpServer({ sessions, logger, port: options.port ?? invariants.network.serverPort, publicGameUrl: options.publicGameUrl, allowedOrigins: options.allowedOrigins });
-    const sockets = new ClientSockets({ io, sessions, logger, adminToken: options.adminToken });
+    const sockets = new ClientSockets({ io, sessions, logger, adminToken: options.adminToken, systemMessages });
     const discovery = options.discovery === false ? null : new SessionDiscovery({
         sessions, logger, httpPort: () => http.address()?.port,
         port: options.discoveryPort ?? invariants.network.udpDiscoveryPort, host: options.host || '0.0.0.0'
@@ -26,6 +28,7 @@ function createGameServer(options = {}) {
     let started = false, closing;
     const runtime = {
         app, http, io, sessions, sockets, discovery,
+        publishSystemMessages(next) { systemMessages.publish(next); io.emit('system_messages', systemMessages.current()); },
         /** Bind HTTP/UDP and start session timers; resolves this runtime or rolls back on failure. */
         async start() {
             if (started) return runtime;
@@ -56,6 +59,7 @@ function createGameServer(options = {}) {
             return closing;
         }
     };
+    sockets.publishSystemMessages = next => runtime.publishSystemMessages(next);
     return runtime;
 }
 module.exports = { createGameServer };

@@ -30,7 +30,7 @@ class SessionManager extends EventEmitter {
         const session = this.get(id);
         if (!session) return false;
         this.emit('removing', session);
-        session.close(); this.sessions.delete(id);
+        session.close(); this.sessions.delete(id); this.emit('removed', session);
         return true;
     }
     /** Start this instance’s listener/timers if not already active; returns or resolves its runtime. */

@@ -1,13 +1,15 @@
 /**
  * Run the browser admin dashboard, session selector, radar and GLB viewer.
- * Inputs: DOM elements, Socket.IO metrics/state/assets, local token storage and user controls.
+ * Inputs: DOM elements, Socket.IO metrics/state/assets, login token and user controls.
  * Outputs: Rendered client statistics, cached meshes, scene previews and admin requests.
- * Side effects: Updates DOM/sessionStorage, maintains a socket and WebGL animation, emits control/receipt events.
+ * Side effects: Updates DOM, maintains a socket and WebGL animation, emits control/receipt events.
  * Coupling: Served public HTML provides IDs; Socket.IO and local Three.js modules provide transport/rendering.
  */
 /** Resolve a required dashboard element by ID; returns the live DOM node. */
+import { mountSessionManagement } from '/admin-sessions.js';
 const $ = id => document.getElementById(id);
-const socket = io({ auth: { role: 'admin', sync: true, adminToken: sessionStorage.getItem('tbnAdminToken') || '' } });
+const socket = io({ autoConnect: false, reconnection: false, auth: { role: 'admin', sync: true } });
+let authenticated = false;
 let clients = [], manifest = {}, selectedId = null, map = null, state = { actors: [] };
 let viewerPromise, model, scene, camera, renderer, controls, initialCamera;
 let meshVersion = 0, terrainOnlyCollisions = false, terrainPresets = [];
@@ -87,28 +89,121 @@ function renderClients() {
         actions.append(view, ' ', kick);
     }
 }
+/** Authenticate before revealing the dashboard or requesting any session information. */
 $('admin-auth').addEventListener('submit', event => {
     event.preventDefault();
-    const token = $('admin-token').value.trim();
-    sessionStorage.setItem('tbnAdminToken', token);
-    socket.auth.adminToken = token;
+    $('login-error').textContent = '';
+    $('login-button').disabled = true;
+    socket.auth.adminToken = $('admin-token').value.trim();
     socket.disconnect().connect();
 });
+function lockDashboard(message = '') {
+    authenticated = false;
+    $('app').hidden = true; $('login').hidden = false;
+    $('login-error').textContent = message; $('login-button').disabled = false;
+}
+socket.on('admin_authenticated', () => {
+    authenticated = true;
+    $('admin-token').value = '';
+    $('login').hidden = true; $('app').hidden = false;
+    $('login-button').disabled = false;
+});
+$('logout').addEventListener('click', () => {
+    socket.disconnect(); socket.auth.adminToken = '';
+    events = []; frozenEvents = null; renderEvents();
+    $('session-select').replaceChildren();
+    lockDashboard(); $('admin-token').focus();
+});
+for (const button of document.querySelectorAll('[data-nav]')) button.addEventListener('click', () => {
+    for (const panel of document.querySelectorAll('[data-panel]')) panel.hidden = panel.dataset.panel !== button.dataset.nav;
+    for (const nav of document.querySelectorAll('[data-nav]')) {
+        if (nav === button) nav.setAttribute('aria-current', 'page'); else nav.removeAttribute('aria-current');
+    }
+    $('page-title').textContent = button.textContent;
+    $('admin-content').scrollTop = 0;
+    const inspect = ['clients', 'world'].includes(button.dataset.nav);
+    $('session-context').hidden = !inspect;
+    if (inspect && !activeSessionId && $('session-select').value) socket.emit('join_session', $('session-select').value);
+});
+let events = [], frozenEvents = null, renderTimer;
+const filterIds = ['log-search', 'log-type', 'log-level', 'log-session', 'log-client', 'log-from', 'log-to'];
+function filteredEvents() {
+    const query = $('log-search').value.toLowerCase(), client = $('log-client').value.toLowerCase();
+    const from = $('log-from').value ? new Date($('log-from').value).getTime() : -Infinity;
+    const to = $('log-to').value ? new Date($('log-to').value).getTime() : Infinity;
+    return (frozenEvents || events).filter(entry => {
+        const time = Date.parse(entry.timestamp);
+        return (!query || JSON.stringify(entry).toLowerCase().includes(query)) &&
+            (!$('log-type').value || entry.type === $('log-type').value) &&
+            (!$('log-level').value || entry.level === $('log-level').value) &&
+            (!$('log-session').value || entry.sessionId === $('log-session').value) &&
+            (!client || `${entry.clientId} ${entry.client?.address} ${entry.client?.forwardedFor}`.toLowerCase().includes(client)) && time >= from && time <= to;
+    });
+}
+function renderEvents() {
+    const rows = $('event-rows'), filtered = filteredEvents();
+    const expanded = new Set([...rows.querySelectorAll('details[open]')].map(node => node.dataset.event));
+    rows.replaceChildren();
+    $('log-count').textContent = `${filtered.length} matching / ${(frozenEvents || events).length} retained events${frozenEvents ? ' · paused snapshot' : ' · live'} · oldest first in export, newest first below`;
+    const types = [...new Set(events.map(entry => entry.type))].sort();
+    const selected = $('log-type').value;
+    $('log-type').replaceChildren(new Option('All events', ''), ...types.map(type => new Option(type, type)));
+    $('log-type').value = selected;
+    for (const entry of [...filtered].reverse()) {
+        const row = rows.insertRow();
+        for (const value of [new Date(entry.timestamp).toLocaleString(), `${entry.type} · ${entry.level}`,
+            `${entry.sessionId || 'Lobby'} / ${entry.clientId || '—'}`,
+            `${entry.client?.address || '—'}\n${entry.client?.userAgent || 'User agent unavailable'}`]) {
+            const cell = row.insertCell(); cell.textContent = value; cell.style.maxWidth = '280px'; cell.style.overflowWrap = 'anywhere';
+        }
+        const cell = row.insertCell(), details = document.createElement('details'), summary = document.createElement('summary');
+        details.dataset.event = String(entry.id); details.open = expanded.has(String(entry.id));
+        summary.textContent = entry.details.reason || 'Inspect event'; summary.className = 'cursor-pointer text-cyan-400';
+        const pre = document.createElement('pre'); pre.className = 'mt-3 max-w-xl'; pre.textContent = JSON.stringify(entry, null, 2);
+        details.append(summary, pre); cell.append(details);
+    }
+    if (!filtered.length) { const cell = rows.insertRow().insertCell(); cell.colSpan = 5; cell.textContent = 'No events match these filters.'; }
+}
+function scheduleEvents() { renderTimer ||= setTimeout(() => { renderTimer = null; renderEvents(); }, 150); }
+socket.on('admin_events', data => { events = data.events.slice(-1000); scheduleEvents(); });
+socket.on('admin_event', entry => { events.push(entry); if (events.length > 1000) events.shift(); if (!frozenEvents) scheduleEvents(); });
+for (const id of filterIds) $(id).addEventListener('input', scheduleEvents);
+$('reset-filters').addEventListener('click', () => { for (const id of filterIds) $(id).value = ''; renderEvents(); });
+$('pause-logs').addEventListener('click', () => {
+    frozenEvents = frozenEvents ? null : events.slice();
+    $('pause-logs').textContent = frozenEvents ? 'Resume' : 'Pause'; renderEvents();
+});
+$('export-logs').addEventListener('click', () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(filteredEvents(), null, 2)], { type: 'application/json' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `tbn-events-${Date.now()}.json`; anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
 $('session-select').addEventListener('change', () => {
-    socket.auth.sessionId = $('session-select').value;
-    socket.emit('join_session', $('session-select').value);
+    if ($('session-select').value) socket.emit('join_session', $('session-select').value);
 });
 socket.on('sessions_list', sessions => {
-    $('session-select').replaceChildren(...sessions.map(session => {
-        const option = document.createElement('option');
-        option.value = session.id; option.textContent = session.name;
-        option.selected = session.id === (socket.auth.sessionId || 'default');
-        return option;
-    }));
+    const selected = activeSessionId;
+    const placeholder = new Option(sessions.length ? 'Choose a session…' : 'No sessions available', '');
+    placeholder.disabled = true;
+    $('session-select').replaceChildren(placeholder, ...sessions.map(session => new Option(session.name, session.id)));
+    $('session-select').value = selected || '';
+    if (sessions.some(session => session.id === selected)) $('session-select').value = selected;
+    if (!sessions.length) {
+        $('session-select').disabled = true;
+    } else $('session-select').disabled = false;
+});
+socket.on('admin_server_metrics', metrics => {
+    $('count').textContent = metrics.connectedPlayers;
+    $('registered').textContent = metrics.registeredMeshes;
+    $('uptime').textContent = duration(metrics.uptime);
+    $('session-count').textContent = metrics.sessionCount;
+    $('lobby-count').textContent = metrics.lobbyPlayers;
+    $('rate').textContent = metrics.tickRates.length ? `${metrics.tickRates.length > 1 ? metrics.tickRates[0] + '–' : ''}${metrics.tickRates.at(-1)} Hz` : 'No sessions';
 });
 socket.on('session_joined', session => {
-    activeSessionId = session.sessionId; clearTerrainCandidate();
+    activeSessionId = session.sessionId; $('session-select').value = activeSessionId; clearTerrainCandidate();
     $('flatten-terrain').disabled = false; $('flatten-terrain').textContent = 'Flatten terrain';
+    $('reset-targets').disabled = false;
     $('remove-targets').disabled = false; $('remove-targets').textContent = 'Remove targets';
     terrainOnlyCollisions = false; $('disable-object-collisions').disabled = false; $('disable-object-collisions').textContent = 'Disable object collisions';
     map = null; $('terrain-preset').disabled = true; $('apply-terrain').disabled = true;
@@ -116,13 +211,21 @@ socket.on('session_joined', session => {
     renderClients(); clearMesh('Choose View beside a registered mesh.');
     $('selected').textContent = `Session: ${session.name}`;
 });
-socket.on('session_rejected', error => { $('status').textContent = error.reason; log(error.reason); });
+socket.on('session_closed', () => {
+    activeSessionId = null; clearTerrainCandidate(); clients = []; map = null; state = { actors: [] }; manifest = {}; selectedId = null;
+    renderClients(); clearMesh('Session closed. Choose another session.');
+    $('selected').textContent = 'No session selected';
+    for (const id of ['flatten-terrain', 'remove-targets', 'disable-object-collisions', 'terrain-preset', 'reset-targets']) $(id).disabled = true;
+    log('Inspected session closed. Server-wide logs and stats remain active.');
+});
+socket.on('session_rejected', error => { if (!authenticated) { socket.disconnect(); lockDashboard(error.reason); } else { $('status').textContent = error.reason; log(error.reason); } });
 socket.on('data_version', version => socket.emit('data_ack', version));
 socket.on('connect', () => {
     $('status').textContent = 'Connected'; $('status').style.color = '#4ade80';
-    log('Dashboard connected'); socket.emit('request_sessions');
+    log('Dashboard connected');
 });
 socket.on('disconnect', reason => {
+    lockDashboard('Connection lost. Sign in to reconnect.');
     activeSessionId = null; clearTerrainCandidate();
     $('apply-terrain').disabled = true; $('terrain-preset').disabled = true;
     $('flatten-terrain').disabled = true; $('remove-targets').disabled = true; $('disable-object-collisions').disabled = true;
@@ -130,9 +233,9 @@ socket.on('disconnect', reason => {
     log(`Disconnected: ${reason}`);
     clients = []; manifest = {}; selectedId = null; state = { actors: [] };
     renderClients(); clearMesh('Disconnected from server.');
-    for (const id of ['count', 'registered', 'uptime', 'rate']) $(id).textContent = '—';
+    for (const id of ['count', 'registered', 'uptime', 'rate', 'session-count', 'lobby-count']) $(id).textContent = '—';
 });
-socket.on('connect_error', error => { $('status').textContent = 'Connection failed · retrying'; log(error.message); });
+socket.on('connect_error', error => { socket.disconnect(); lockDashboard(error.message); });
 socket.on('mesh_manifest', data => { manifest = data; });
 socket.on('mesh_manifest_entry', entry => {
     manifest[entry.id] = entry;
@@ -146,13 +249,10 @@ socket.on('mesh_manifest_removed', id => {
     log(`Player disconnected: ${id}`);
 });
 socket.on('server_metrics', metrics => {
+    if (metrics.sessionId !== activeSessionId) return;
     const oldIds = new Set(clients.map(client => client.id));
     clients = metrics.clients;
     for (const client of clients) if (!oldIds.has(client.id)) log(`Player connected: ${client.name}`);
-    $('count').textContent = metrics.actorCount;
-    $('registered').textContent = clients.filter(client => client.registered).length;
-    $('uptime').textContent = duration(metrics.uptime);
-    $('rate').textContent = `${metrics.tickRate} Hz`;
     renderClients();
 });
 socket.on('map_data', data => {
@@ -344,7 +444,7 @@ function drawRadar() {
     ctx.strokeStyle = '#25344b';
     for (let i = 0; i <= 500; i += 50) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 500); ctx.moveTo(0, i); ctx.lineTo(500, i); ctx.stroke(); }
     for (const target of map?.targets || []) { ctx.fillStyle = '#fb7185'; ctx.fillRect((target.x - map.terrain.origin.x) / map.terrain.width * 500 - 3, 500 - (target.z - map.terrain.origin.z) / map.terrain.depth * 500 - 3, 6, 6); }
-    for (const actor of state.actors) {
+    for (const actor of map ? state.actors : []) {
         const x = (actor.position.x - map.terrain.origin.x) / map.terrain.width * 500, y = 500 - (actor.position.z - map.terrain.origin.z) / map.terrain.depth * 500;
         ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
         ctx.font = '11px system-ui'; ctx.fillText(actor.name, x + 8, y + 4);
@@ -352,3 +452,4 @@ function drawRadar() {
     requestAnimationFrame(drawRadar);
 }
 drawRadar();
+mountSessionManagement(socket);

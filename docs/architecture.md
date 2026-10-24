@@ -19,7 +19,7 @@ modules/
 test/            Unit, schema and network integration tests
 docs/            Architecture and protocol notes
 node_modules/    Installed dependencies
-tbn/             Versioned framework schemas, invariants, relay and client guidance
+tbn/             Runtime protocol schemas and invariants
 ```
 
 `tbn` is tracked directly in this repository so client contracts and their updates are committed with the implementation. It is not a second server implementation. The server requires its schemas and invariant file at runtime.

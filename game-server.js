@@ -16,6 +16,7 @@ async function main() {
         discovery: process.env.K_SERVICE ? false : undefined,
         debug: process.argv.includes('--debug'),
         adminToken: process.env.ADMIN_TOKEN,
+        systemMessagesFile: process.env.SYSTEM_MESSAGES_FILE,
         publicGameUrl: process.env.PUBLIC_GAME_URL ?? invariants.network.browserServerUrl,
         allowedOrigins: (process.env.ALLOWED_BROWSER_ORIGINS || '').split(',').filter(Boolean)
     });

@@ -16,8 +16,10 @@ test('hosted adapter defers connect, disables cookies and owns optional reconnec
     assert.equal(calls[0].options.path,'/socket.io');assert.equal(calls[0].options.withCredentials,false);
     assert.equal(calls[0].options.autoConnect,false);
     await Promise.resolve();assert.equal(calls[1],'connect');
-    handlers.connect();handlers.connect();assert.equal(emitted.length,2);
-    assert.equal(emitted[0][0],'register_actor');assert.equal(emitted[0][1],actor);
+    handlers.connect(); // actor alone leaves the connection in the lobby
+    assert.equal(emitted.length, 0);
+    assert.equal(typeof socket.joinSession, 'function');
+    assert.equal(typeof socket.leaveSession, 'function');
     window.TBN.connect({url:'http://localhost:4000',autoConnect:false});await Promise.resolve();
     assert.equal(calls.filter(c=>c==='connect').length,1);
 });

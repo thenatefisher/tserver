@@ -100,6 +100,7 @@ async function connect() {
     for (const event of ['terrain_changed', 'terrain_flattened']) current.on(event, () => { stop(); poses.clear(); effects.clear(); cameraSnap = true; poses.push(latest, performance.now()); });
     current.on('data_version', version => current.emit('data_ack', version));
     for (const event of ['registration_rejected', 'session_rejected', 'request_rejected']) current.on(event, result => { $('status').textContent = result.reason; $('start').disabled = false; });
+    current.on('session_closed', () => { registered = false; stop(); poses.clear(); effects.clear(); for (const mesh of actors.values()) dispose(mesh); actors.clear(); latest = { actors: [] }; $('status').textContent = 'Session closed · choose another session'; $('start').disabled = false; });
     current.on('disconnect', () => { registered = false; stop(); effects.clear(); $('status').textContent = 'Disconnected · reconnect to fly'; $('start').disabled = false; });
     current.on('connect_error', error => { $('status').textContent = error.message; $('start').disabled = false; });
 }
